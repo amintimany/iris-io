@@ -3,7 +3,7 @@ From iris_io.prelude Require Export base.
 From iris.algebra Require Export ofe.
 From stdpp Require Import gmap.
 
-Module F_mu_ref_conc.
+Module Plang.
   Definition loc := positive.
 
   Instance loc_dec_eq (l l' : loc) : Decision (l = l') := _.
@@ -311,16 +311,16 @@ Module F_mu_ref_conc.
   Canonical Structure stateC := leibnizC state.
   Canonical Structure valC := leibnizC val.
   Canonical Structure exprC := leibnizC expr.
-End F_mu_ref_conc.
+End Plang.
 
-Canonical Structure F_mu_ref_conc_ectxi_lang :=
-  EctxiLanguage F_mu_ref_conc.lang_mixin.
-Canonical Structure F_mu_ref_conc_ectx_lang :=
-  EctxLanguageOfEctxi F_mu_ref_conc_ectxi_lang.
-Canonical Structure F_mu_ref_conc_lang :=
-  LanguageOfEctx F_mu_ref_conc_ectx_lang.
+Canonical Structure P_ectxi_lang :=
+  EctxiLanguage Plang.lang_mixin.
+Canonical Structure P_ectx_lang :=
+  EctxLanguageOfEctxi P_ectxi_lang.
+Canonical Structure P_lang :=
+  LanguageOfEctx P_ectx_lang.
 
-Export F_mu_ref_conc.
+Export Plang.
 
 Hint Extern 20 (PureExec _ _ _) => progress simpl : typeclass_instances.
 

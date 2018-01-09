@@ -15,7 +15,7 @@ Class heapIG Σ := HeapIG {
   prophI_gen_heapG :> gen_heapG loc Proph Σ;
 }.
 
-Instance heapIG_irisG `{heapIG Σ} : irisG F_mu_ref_conc_lang Σ := {
+Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
   iris_invG := heapI_invG;
   state_interp := λ σ, ((gen_heap_ctx σ.1) ∗ (gen_heap_ctx σ.2))%I
 }.
