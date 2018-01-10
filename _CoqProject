@@ -2,3 +2,4 @@
 prelude/base.v
 lang.v
 rules.v
+lang_erased.v
