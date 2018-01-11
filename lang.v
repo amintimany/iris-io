@@ -2,6 +2,7 @@ From iris.program_logic Require Export language ectx_language ectxi_language.
 From iris_io.prelude Require Export base.
 From iris.algebra Require Export ofe.
 From stdpp Require Import gmap.
+Require Export Coq.Logic.Classical_Prop.
 
 Module Plang.
   Definition loc := positive.
@@ -49,7 +50,7 @@ Module Plang.
   | CAS (e0 : expr) (e1 : expr) (e2 : expr)
   (* Instrumenting Prophecies *)
   | Pr (l : loc)
-  | Create_Pr
+  | Create_Pr A (P : A → Stream expr)
   | Assign_Pr (e1 e2 : expr).
 
   Instance Ids_expr : Ids expr. derive. Defined.
@@ -61,8 +62,8 @@ Module Plang.
   Notation "#♭ b" := (Bool b) (at level 20).
   Notation "#n n" := (Nat n) (at level 20).
 
-  Instance expr_dec_eq (e e' : expr) : Decision (e = e').
-  Proof. solve_decision. Defined.
+  (* Instance expr_dec_eq (e e' : expr) : Decision (e = e'). *)
+  (* Proof. solve_decision. Defined. *)
 
   Inductive val :=
   | RecV (e : {bind 1 of expr})
@@ -90,8 +91,8 @@ Module Plang.
     | Lt => λ a b, if (lt_dec a b) then #♭v true else #♭v false
     end.
 
-  Instance val_dec_eq (v v' : val) : Decision (v = v').
-  Proof. solve_decision. Defined.
+  (* Instance val_dec_eq (v v' : val) : Decision (v = v'). *)
+  (* Proof. solve_decision. Defined. *)
 
   Instance val_inh : Inhabited val := populate UnitV.
 
@@ -181,7 +182,95 @@ Module Plang.
     | Assign_PrRCtx v1 => Assign_Pr (of_val v1) e
     end.
 
-  Definition Proph := Stream val.
+  Lemma to_of_val v : to_val (of_val v) = Some v.
+  Proof. by induction v; simplify_option_eq. Qed.
+
+  Lemma of_to_val e v : to_val e = Some v → of_val v = e.
+  Proof.
+    revert v; induction e; intros; simplify_option_eq; auto with f_equal.
+  Qed.
+
+  Instance of_val_inj : Inj (=) (=) of_val.
+  Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
+
+  Definition BaseProph := Stream val.
+  Definition exprProph := Stream expr.
+  CoFixpoint proph_to_expr p :=
+    {| Shead := of_val (Shead p); Stail := proph_to_expr (Stail p) |}.
+
+  Lemma proph_to_expr_tail p :
+    proph_to_expr (Stail p) = Stail (proph_to_expr p).
+  Proof. by destruct p. Qed.
+
+  Global Instance proph_to_expr_inj : Inj eq eq proph_to_expr.
+  Proof.
+    intros x y Heq%eq_Seq. apply Seq_eq.
+    revert x y Heq.
+    cofix IH => x y Heq.
+    rewrite [proph_to_expr x]Stream_unfold in Heq.
+    rewrite [proph_to_expr y]Stream_unfold in Heq.
+    destruct x as [xh xt]; destruct y as [yh yt]; simpl in *.
+    inversion Heq; simpl in *; subst.
+    constructor; auto.
+    apply of_val_inj; auto.
+  Qed.
+
+  Definition Elem {A B: Type} (b : B) (P : A → B) :=
+    ∃ x, P x = b.
+
+  Record Proph :=
+    { PrS : Stream val;
+      PrA : Type;
+      PrP : PrA → Stream expr;
+      PrPvals : ∀ x, ∃ s, proph_to_expr s = PrP x;
+      PrP_ent :
+        ∀ n s s', Elem (proph_to_expr s) PrP → Elem (proph_to_expr s') PrP →
+                  Elem (proph_to_expr (take_nth_from n s s')) PrP;
+      PrSI : Elem (proph_to_expr PrS) PrP
+    }.
+
+  Lemma Prohp_eq_simplify p p' (PrA_eq : PrA p = PrA p') :
+    PrS p = PrS p' → match PrA_eq in _ = z return z → Stream expr with
+                       eq_refl => PrP p end = PrP p' → p = p'.
+  Proof.
+    intros Hs Ha.
+    destruct p as [pS pA pP pPv pPe pPSI].
+    destruct p' as [p'S p'A p'P p'Pv p'Pe p'PSI].
+    simpl in *.
+    destruct PrA_eq; subst.
+    f_equal; apply proof_irrelevance.
+  Qed.
+
+  Program Definition Proph_tail p :=
+    {| PrS := Stail (PrS p); PrA := PrA p; PrP := λ x, Stail (PrP p x) |}.
+  Next Obligation.
+  Proof.
+    intros p x.
+    destruct (PrPvals p x) as [s <-].
+    exists (Stail s); by rewrite proph_to_expr_tail.
+  Qed.
+  Next Obligation.
+  Proof.
+    intros p n s s' [u Hu] [u' Hu'].
+    destruct (PrPvals p u) as [w Hw].
+    destruct (PrPvals p u') as [w' Hw'].
+    destruct (PrP_ent p (S n) w w') as [y Hy].
+    { by rewrite Hw; exists u. }
+    { by rewrite Hw'; exists u'. }
+    exists y. rewrite Hy. simpl.
+    rewrite -Hw in Hu; rewrite -Hw' in Hu'.
+    apply proph_to_expr_inj in Hu.
+    apply proph_to_expr_inj in Hu'.
+    by subst.
+  Qed.
+  Next Obligation.
+  Proof.
+    intros p.
+    destruct (PrSI p) as [y Hy].
+    exists y. destruct p as [[h t] ? P ?]; simpl in *.
+    destruct (P y); simpl in *.
+    apply (f_equal Stail Hy).
+  Qed.
 
   Definition state : Type := (gmap loc val) * (gmap loc Proph).
 
@@ -242,28 +331,23 @@ Module Plang.
      σ !! l = Some v1 →
      head_step (CAS (Loc l) e1 e2) (σ, σp) (#♭ true) (<[l:=v2]>σ, σp) []
   (* Prophecy operational semantics *)
-  | Create_PrS v σ σp :
-      head_step Create_Pr (σ, σp) (Pr (fresh (dom (gset loc) σp)))
-                (σ, <[fresh (dom (gset loc) σp):=v]>σp) []
+  | Create_PrS A P v
+               (H : ∀ x, ∃ s, proph_to_expr s = P x)
+               (H' : ∀ n s s',
+                   Elem (proph_to_expr s) P → Elem (proph_to_expr s') P →
+                   Elem (proph_to_expr (take_nth_from n s s')) P)
+               (H'' : Elem (proph_to_expr v) P) σ σp :
+      head_step (Create_Pr A P) (σ, σp) (Pr (fresh (dom (gset loc) σp)))
+                (σ, <[fresh (dom (gset loc) σp):=
+                        {|PrS := v; PrA := A; PrP := P; PrPvals := H; PrP_ent := H'; PrSI := H'' |}]>σp) []
   | AssignSucS l e p σ σp :
-     σp !! l = Some p → to_val e = Some (Shead p) →
-     head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Stail p]>σp) []
+     σp !! l = Some p → to_val e = Some (Shead (PrS p)) →
+     head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) []
   | AssignFailS l e w p σ σp :
-      σp !! l = Some p → to_val e = Some w → w ≠ Shead p →
+      σp !! l = Some p → to_val e = Some w → w ≠ Shead (PrS p) →
       head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) [].
 
   (** Basic properties about the language *)
-  Lemma to_of_val v : to_val (of_val v) = Some v.
-  Proof. by induction v; simplify_option_eq. Qed.
-
-  Lemma of_to_val e v : to_val e = Some v → of_val v = e.
-  Proof.
-    revert v; induction e; intros; simplify_option_eq; auto with f_equal.
-  Qed.
-
-  Instance of_val_inj : Inj (=) (=) of_val.
-  Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
-
   Lemma fill_item_val Ki e :
     is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
   Proof. intros [v ?]. destruct Ki; simplify_option_eq; eauto. Qed.
@@ -294,9 +378,16 @@ Module Plang.
     to_val e = Some v → head_step (Alloc e) (σ, σp) (Loc l) (<[l:=v]>σ, σp) [].
   Proof. by intros; apply AllocS, (not_elem_of_dom (D:=gset loc)), is_fresh. Qed.
 
-  Lemma create_pr σ σp :
-    head_step Create_Pr (σ, σp) (Pr (fresh (dom (gset loc) σp)))
-              (σ, <[fresh (dom (gset loc) σp):= (Sconst UnitV)]>σp) [].
+  Lemma create_pr
+        A P v
+        (H : ∀ x, ∃ s, proph_to_expr s = P x)
+        (H' : ∀ n s s',
+            Elem (proph_to_expr s) P → Elem (proph_to_expr s') P →
+            Elem (proph_to_expr (take_nth_from n s s')) P)
+        (H'' : Elem (proph_to_expr v) P) σ σp :
+    head_step (Create_Pr A P) (σ, σp) (Pr (fresh (dom (gset loc) σp)))
+              (σ, <[fresh (dom (gset loc) σp):=
+                      ({|PrS := v; PrA := A; PrP := P; PrPvals := H; PrP_ent := H'; PrSI := H'' |}) ]>σp) [].
   Proof. intros; eapply Create_PrS. Qed.
 
   Lemma val_head_stuck e1 σ1 e2 σ2 efs : head_step e1 σ1 e2 σ2 efs → to_val e1 = None.

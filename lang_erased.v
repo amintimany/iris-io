@@ -6,7 +6,7 @@ From stdpp Require Import gmap.
 
 Module Plang_erased.
 
-  Definition erased_state : Type := (gmap loc val) * (gset loc).
+  Definition erased_state : Type := (gmap loc val) * (gmap loc Proph).
 
   Inductive erased_head_step :
     expr → erased_state → expr → erased_state → list expr → Prop :=
@@ -66,12 +66,18 @@ Module Plang_erased.
      σ !! l = Some v1 →
      erased_head_step (CAS (Loc l) e1 e2) (σ, σp) (#♭ true) (<[l:=v2]>σ, σp) []
   (* Prophecy operational semantics *)
-  | ECreate_PrS σ σp :
-      erased_head_step Create_Pr (σ, σp) (Pr (fresh σp))
-                (σ, {[fresh σp]} ∪ σp) []
-  | EAssignS v l e σ σp :
-     l ∈ σp → to_val e = Some v →
-     erased_head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, σp) [].
+  | ECreate_PrS A P v
+                (H : ∀ x, ∃ s, proph_to_expr s = P x)
+                (H' : ∀ n s s',
+                    Elem (proph_to_expr s) P → Elem (proph_to_expr s') P →
+                    Elem (proph_to_expr (take_nth_from n s s')) P)
+                (H'' : Elem (proph_to_expr v) P) σ σp :
+      erased_head_step (Create_Pr A P) (σ, σp) (Pr (fresh (dom (gset loc) σp)))
+                (σ, <[fresh (dom (gset loc) σp):=
+                        {|PrS := v; PrA := A; PrP := P; PrPvals := H; PrP_ent := H'; PrSI := H'' |}]>σp) []
+  | EAssignSucS l e w p σ σp :
+      σp !! l = Some p → to_val e = Some w → w = Shead (PrS p) →
+     erased_head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) [].
 
   (** Basic properties about the language *)
   Lemma val_stuck e1 σ1 e2 σ2 ef :

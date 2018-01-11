@@ -6,6 +6,7 @@ From iris_io Require Export lang.
 From iris.proofmode Require Import tactics.
 From iris.base_logic Require Export gen_heap.
 Import uPred.
+Require Export Coq.Logic.Classical_Prop.
 
 (** The CMRA for the heap of the implementation. This is linked to the
     physical heap. *)
@@ -124,13 +125,18 @@ Section lang_rules.
     iModIntro. iSplit=>//. iFrame. by iApply "HΦ".
   Qed.
 
-  Lemma wp_create_pr E :
-    {{{ True }}} Create_Pr @ E {{{ l, RET (PrV l); ∃ p, l ↦ₚ p }}}.
+  Lemma wp_create_pr E A f :
+    (∀ x, ∃ s, proph_to_expr s = f x) →
+    (∀ n s s',
+        Elem (proph_to_expr s) f → Elem (proph_to_expr s') f →
+        Elem (proph_to_expr (take_nth_from n s s')) f) →
+    (∃ p, Elem (proph_to_expr p) f) →
+    {{{ True }}} Create_Pr A f @ E {{{ l, RET (PrV l); ∃ p, l ↦ₚ p}}}.
   Proof.
-    iIntros (Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
+    iIntros (Hv He [p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
     iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>"; iSplit.
-    { iPureIntro. eexists _, _, _; simpl. apply create_pr. }
-    iNext; iIntros (v2 σ2 efs Hstep); inv_head_step.
+    { iPureIntro. eexists _, _, _; simpl. eapply (create_pr _ _ _ Hv He Hf). }
+    iNext; iIntros (v2 σ2 efs Hstep). inversion Hstep; simplify_eq.
     iMod (@gen_heap_alloc with "Hσp") as "[Hσp Hl]".
     eapply (not_elem_of_dom (D := gset loc)), is_fresh.
     iModIntro; iSplit=> //. iFrame. iApply "HΦ"; eauto.
@@ -139,10 +145,10 @@ Section lang_rules.
   Lemma wp_assign_pr E l e v p :
     IntoVal e v →
     {{{ l ↦ₚ p }}} Assign_Pr (Pr l) e @ E
-                   {{{ RET UnitV; ⌜v = Shead p⌝ ∗ l ↦ₚ Stail p}}}.
+                   {{{ RET UnitV; ⌜v = Shead (PrS p)⌝ ∗ l ↦ₚ Proph_tail p}}}.
   Proof.
     iIntros (<-%of_to_val Φ) "Hpr HΦ".
-    destruct (decide (v = (Shead p))); first simplify_eq.
+    destruct (classic (v = (Shead (PrS p)))); first simplify_eq.
     - iApply wp_lift_atomic_head_step_no_fork; auto.
       iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>".
       iDestruct (@gen_heap_valid with "Hσp Hpr") as %?.
