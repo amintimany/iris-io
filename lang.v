@@ -51,7 +51,9 @@ Module Plang.
   (* Instrumenting Prophecies *)
   | Pr (l : loc)
   | Create_Pr A (P : A → Stream expr)
-  | Assign_Pr (e1 e2 : expr).
+  | Assign_Pr (e1 e2 : expr)
+  (* Random bit *)
+  | Rand.
 
   Instance Ids_expr : Ids expr. derive. Defined.
   Instance Rename_expr : Rename expr. derive. Defined.
@@ -346,7 +348,8 @@ Module Plang.
   | AssignFailS l e w p z s σ σp :
       σp !! l = Some p → to_val e = Some w →
       PrP p z = s → (Shead s) = e → w ≠ Shead (PrS p) →
-      head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) [].
+      head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) []
+  |RandS b σ : head_step Rand σ (Bool b) σ [].
 
   (** Basic properties about the language *)
   Lemma fill_item_val Ki e :

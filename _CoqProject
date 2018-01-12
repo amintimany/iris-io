@@ -4,3 +4,4 @@ lang.v
 rules.v
 lang_erased.v
 erasure.v
+coin.v

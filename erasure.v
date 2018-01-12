@@ -4,7 +4,7 @@ From iris_io Require Export lang lang_erased.
 From iris.algebra Require Export ofe.
 From stdpp Require Import gmap.
 
-Record Proph_equiv  p p' :=
+Record Proph_equiv p p' :=
   { PrA_eq : PrA p = PrA p';
     PrP_eq :  match PrA_eq in _ = z return z → Stream expr with
                 eq_refl => PrP p end = PrP p' }.
@@ -210,6 +210,8 @@ Proof.
   + destruct (PrSI p) as [x Hx].
     do 3 eexists. econstructor; eauto. econstructor; eauto.
     by apply of_to_val in H6; rewrite -H6.
+  + do 3 eexists. econstructor; eauto. unshelve econstructor.
+    constructor.
 Qed.
 
 Lemma soundness_prophecies e :

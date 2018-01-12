@@ -78,7 +78,8 @@ Module Plang_erased.
   | EAssignSucS l e w p z s σ σp :
       σp !! l = Some p → to_val e = Some w →
       PrP p z = s → (Shead s) = e →
-     erased_head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) [].
+     erased_head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) []
+  | ERandS b σ : erased_head_step Rand σ (Bool b) σ [].
 
   (** Basic properties about the language *)
   Lemma val_stuck e1 σ1 e2 σ2 ef :

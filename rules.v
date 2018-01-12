@@ -125,13 +125,33 @@ Section lang_rules.
     iModIntro. iSplit=>//. iFrame. by iApply "HΦ".
   Qed.
 
+  Record PrP_eq A (f : A → Stream expr) A' (f' : A' → Stream expr) :=
+    { PrA_eq : A = A';
+      PrF_eq :  match PrA_eq in _ = z return z → Stream expr with
+                  eq_refl => f end = f' }.
+  Lemma Proph_equiv_refl A f : PrP_eq A f A f.
+  Proof.
+    unshelve econstructor; eauto.
+  Qed.
+
+  Lemma existT_Prp_eq A f A' f' :
+    existT A f = existT A' f' → PrP_eq A f A' f'.
+  Proof.
+    intros Heq.
+    pose proof (f_equal projT1 Heq) as Heq'; simpl in *.
+    destruct Heq'.
+    rewrite (inj_pair2 _ _ _ _ _ Heq).
+    apply Proph_equiv_refl.
+  Qed.
+
   Lemma wp_create_pr E A f :
     (∀ x, ∃ s, proph_to_expr s = f x) →
     (∀ n s s',
         Elem (proph_to_expr s) f → Elem (proph_to_expr s') f →
         Elem (proph_to_expr (take_nth_from n s s')) f) →
     (∃ p, Elem (proph_to_expr p) f) →
-    {{{ True }}} Create_Pr A f @ E {{{ l, RET (PrV l); ∃ p, l ↦ₚ p}}}.
+    {{{ True }}} Create_Pr A f @ E
+    {{{ l, RET (PrV l); ∃ p, l ↦ₚ p ∧ ⌜PrP_eq (PrA p) (PrP p) A f⌝}}}.
   Proof.
     iIntros (Hv He [p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
     iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>"; iSplit.
@@ -139,7 +159,9 @@ Section lang_rules.
     iNext; iIntros (v2 σ2 efs Hstep). inversion Hstep; simplify_eq.
     iMod (@gen_heap_alloc with "Hσp") as "[Hσp Hl]".
     eapply (not_elem_of_dom (D := gset loc)), is_fresh.
-    iModIntro; iSplit=> //. iFrame. iApply "HΦ"; eauto.
+    iModIntro; iSplit=> //. iFrame. iApply "HΦ".
+    iExists _; iFrame. iPureIntro. simpl.
+    by apply existT_Prp_eq.
   Qed.
 
   Lemma wp_assign_pr E l e v p :
@@ -169,6 +191,21 @@ Section lang_rules.
       iNext; iIntros (v2 σ2 efs Hstep); inv_head_step.
       iMod "HM" as "_". iModIntro.
       iFrame. iSplit; last done. iApply "IH"; auto.
+  Qed.
+
+  Lemma wp_rand E Φ :
+    ▷ (∀ b, |={E}=> Φ (BoolV b)) ⊢ WP Rand @ E {{ Φ }}.
+  Proof.
+  rewrite -(wp_lift_head_step Rand) //=; eauto.
+  iIntros "HΦ". iIntros ([σ1 σ2]) "[Hσ1 Hσ2]".
+  iMod (fupd_intro_mask') as "HM"; last iModIntro; first set_solver.
+  iSplit; simpl in *.
+  { iPureIntro. do 3 eexists. unshelve econstructor. constructor. }
+  iNext. iIntros (e2 σ3 efs Hrd).
+    inversion Hrd; subst.
+    iMod "HM" as "_"; iModIntro. iFrame.
+    iSplit; auto.
+      by iApply wp_value_fupd.
   Qed.
 
   Lemma wp_fork E e Φ :
