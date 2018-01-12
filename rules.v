@@ -144,10 +144,11 @@ Section lang_rules.
 
   Lemma wp_assign_pr E l e v p :
     IntoVal e v →
+    (∃ z s, PrP p z = s ∧ e = Shead s) →
     {{{ l ↦ₚ p }}} Assign_Pr (Pr l) e @ E
                    {{{ RET UnitV; ⌜v = Shead (PrS p)⌝ ∗ l ↦ₚ Proph_tail p}}}.
   Proof.
-    iIntros (<-%of_to_val Φ) "Hpr HΦ".
+    iIntros (<-%of_to_val (z & s & Hz & Hs) Φ) "Hpr HΦ".
     destruct (classic (v = (Shead (PrS p)))); first simplify_eq.
     - iApply wp_lift_atomic_head_step_no_fork; auto.
       iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>".

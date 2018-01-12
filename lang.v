@@ -343,8 +343,9 @@ Module Plang.
   | AssignSucS l e p σ σp :
      σp !! l = Some p → to_val e = Some (Shead (PrS p)) →
      head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) []
-  | AssignFailS l e w p σ σp :
-      σp !! l = Some p → to_val e = Some w → w ≠ Shead (PrS p) →
+  | AssignFailS l e w p z s σ σp :
+      σp !! l = Some p → to_val e = Some w →
+      PrP p z = s → (Shead s) = e → w ≠ Shead (PrS p) →
       head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) [].
 
   (** Basic properties about the language *)

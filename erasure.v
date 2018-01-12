@@ -21,29 +21,45 @@ Definition have_same_proph
           ∃ v v', Proph_equiv v v' ∧
                   σ.2 !! x = Some v ∧ σ'.2 !! x = Some v'.
 
-Program Definition Proph_go_back p p'
-           (H : Proph_equiv p (Proph_tail p')) :=
-{|PrS := {|Shead := (Shead (PrS p')); Stail := PrS p |};
+Lemma have_same_proph_refl σ : have_same_proph σ σ.
+Proof.
+  destruct σ as [h p].
+  repeat split; simpl; auto.
+  intros x [v Hv]%elem_of_dom.
+  exists v, v; repeat split; auto using Proph_equiv_refl.
+Qed.
+
+Program Definition Proph_go_back p p' z w
+           (H : Proph_equiv p (Proph_tail p'))
+           (H' : to_val (Shead (PrP p' z)) = Some w)
+  :=
+{|PrS := {|Shead := w; Stail := PrS p |};
   PrA := PrA p'; PrP := PrP p'; PrP_ent := PrP_ent p'; PrPvals := PrPvals p' |}.
 Next Obligation.
 Proof.
-  intros p p' Pe.
+  intros p p' z w Pe Pt.
   destruct p as [pS pA pP pPv pP_ent pPSI].
   destruct p' as [p'S p'A p'P p'Pv p'P_ent p'PSI].
   simpl in *.
   destruct Pe as [Pe1 Pe2]; simpl in *. destruct Pe1; subst.
   destruct pPSI as [u Hu].
   destruct (p'Pv u) as [y Hy].
-  destruct (p'P_ent 0 p'S y) as [x Hx]; auto.
-  rewrite Hy; exists u; done. simpl in *.
+  destruct (p'Pv z) as [q Hq].
+  destruct (p'P_ent 0 q y) as [x Hx]; auto.
+  rewrite Hq; by eexists.
+  rewrite Hy; by eexists.
   exists x. rewrite Hx; simpl.
   destruct y as [yh yt]; simpl in *.
   rewrite -Hy in Hu; simpl in *.
-  by apply proph_to_expr_inj in Hu; subst.
+  apply proph_to_expr_inj in Hu; subst.
+  destruct q as [qh qt]; simpl in *.
+  rewrite -Hq in Pt; simpl in *.
+  rewrite to_of_val in Pt.
+  by inversion Pt; subst.
 Qed.
 
-Lemma Proph_tail_Proph_go_back p p' Heq :
-  Proph_tail (Proph_go_back p p' Heq) = p.
+Lemma Proph_tail_Proph_go_back p p' z w Heq Heq' :
+  Proph_tail (Proph_go_back p p' z w Heq Heq') = p.
 Proof.
   destruct p as [pS pA pP pPv pPe pPSI].
   destruct p' as [p'S p'A p'P p'Pv p'Pe p'PSI].
@@ -55,43 +71,6 @@ Proof.
             eapply (Prohp_eq_simplify A B eq_refl)
   end; auto.
 Qed.
-
-(* Lemma have_same_proph_refl σ : have_same_proph σ σ. *)
-(* Proof. *)
-(*   repeat split; auto. *)
-(*   intros x Hx. *)
-(*   apply elem_of_dom in Hx. destruct Hx as [y Hy]. *)
-(*   eexists _, _; repeat split; eauto. *)
-(* Qed. *)
-
-(* Hint Resolve have_same_proph_refl. *)
-
-(* Program Definition AllUnits := *)
-(* {| PrS := (Sconst UnitV); PrA := (); PrP := λ _, (Sconst Unit) |}. *)
-(* Next Obligation. *)
-(* Proof. *)
-(*   exists (). apply Seq_eq. *)
-(*   cofix IH. *)
-(*   rewrite [Sconst _]Stream_unfold [proph_to_expr _]Stream_unfold. *)
-(*   by apply Seq_refl. *)
-(* Qed. *)
-
-(* Definition conjure_prophecies (σ : language.state PE_lang) : *)
-(*   language.state P_lang := *)
-(*   match σ with *)
-(*     (σh, σp) => (σh, σp) *)
-(*   end. *)
-
-(* Lemma conjure_prophecies_have_same_proph σ : *)
-(*   have_same_proph (conjure_prophecies σ) σ. *)
-(* Proof. *)
-(*   destruct σ; split; first done; simpl. *)
-(*   apply mapset.mapset_eq => x; split => Hx. *)
-(*   - destruct (decide (x ∈ m)); first done. *)
-(*     apply elem_of_dom in Hx. destruct Hx as [y Hy]. *)
-(*     rewrite lookup_to_gmap option_guard_False //= in Hy. *)
-(*   - apply elem_of_dom. rewrite lookup_to_gmap option_guard_True; eauto. *)
-(* Qed. *)
 
 Lemma erased_reachable_reachable th1 h1 th2 σ2:
   rtc (@step PE_lang) (th1, (h1, ∅)) (th2, σ2) →
@@ -178,7 +157,7 @@ Proof.
       rewrite Hv1 in Hstr; inversion Hstr; subst; clear Hstr.
       rewrite lookup_insert in Hv2; inversion Hv2; subst; clear Hv2.
       eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
-                       (_, <[l:= (Proph_go_back _ _ Hvv)]> σ2'p)));
+                       (_, <[l:= (Proph_go_back _ _ _ _ Hvv H0)]> σ2'p)));
         [unshelve eapply (IH _ _ _ (_, σp) _ _ (_, _)); eauto; split; simpl; eauto|
          repeat (econstructor; eauto)].
       * assert (dom (gset loc) (<[l:=p]> σ2'p) = dom (gset loc) σ2'p) as Hσ2'p.
@@ -193,16 +172,16 @@ Proof.
            rewrite Hσ2'p. intros Hx.
            destruct (Hsp22 _ Hx) as (w1 & w2 & Hww & Hw1 & Hw2).
            destruct (decide (x = l)); subst.
-           -- eexists (Proph_go_back str p Hvv), p; repeat split; auto;
+           -- eexists (Proph_go_back str p _ _ Hvv H0), p; repeat split; auto;
                 last by rewrite lookup_insert.
               unshelve econstructor; auto.
            -- exists w1, w2; repeat split; auto; rewrite -?Hw2 lookup_insert_ne //.
-      * replace σ2'p with (<[l:= (Proph_tail (Proph_go_back str p Hvv))]>(<[l:= Proph_go_back str p Hvv]> σ2'p)) at 2; last first.
+      * replace σ2'p with (<[l:= (Proph_tail (Proph_go_back str p _ _ Hvv H0))]>(<[l:= Proph_go_back str p _ _ Hvv H0]> σ2'p)) at 2; last first.
         { apply map_eq => i. destruct (decide (i = l)); subst.
           - rewrite lookup_insert Hv1. f_equal.
             apply Proph_tail_Proph_go_back.
           - do 2 rewrite lookup_insert_ne //=. }
-        econstructor; auto.
+        econstructor; eauto.
         by rewrite lookup_insert.
 Qed.
 
@@ -223,13 +202,14 @@ Proof.
   intros (e'&σ2&efs&Hrd); simpl in *.
   inversion Hrd as [K e1' e2' ? ? Hhrd]; simpl in *; subst.
   destruct σ as [σh σp]; simpl in *; simplify_eq.
-  inversion Hhrd; subst; try (repeat econstructor; eauto; fail).
+  inversion Hhrd; subst;
+    try (solve [unshelve (repeat econstructor; eauto)]).
   + match goal with A : is_Some _ |- _ => destruct A as [? ?] end.
     repeat econstructor; eauto.
-  + repeat econstructor; eauto.
-    apply elem_of_dom; eauto.
-  + repeat econstructor; eauto.
-    apply elem_of_dom; eauto.
+  + do 3 eexists. econstructor; eauto. unshelve econstructor; eauto.
+  + destruct (PrSI p) as [x Hx].
+    do 3 eexists. econstructor; eauto. econstructor; eauto.
+    by apply of_to_val in H6; rewrite -H6.
 Qed.
 
 Lemma soundness_prophecies e :
@@ -237,9 +217,8 @@ Lemma soundness_prophecies e :
 Proof.
   intros Hs th2 σ2 Hrtc re Hre.
   assert (rtc step ([e], (∅, ∅)) (th2, σ2)) as Hrtc'.
-  { eapply erased_reachable_reachable; eauto.
-    admit. }
+  { eapply erased_reachable_reachable;
+      eauto using have_same_proph_refl. }
   edestruct Hs as [?|Hred]; eauto.
-  right. eapply reducible_erase_reducible;
-           eauto using conjure_prophecies_have_same_proph.
+  right. by eapply reducible_erase_reducible.
 Qed.

@@ -75,8 +75,9 @@ Module Plang_erased.
       erased_head_step (Create_Pr A P) (σ, σp) (Pr (fresh (dom (gset loc) σp)))
                 (σ, <[fresh (dom (gset loc) σp):=
                         {|PrS := v; PrA := A; PrP := P; PrPvals := H; PrP_ent := H'; PrSI := H'' |}]>σp) []
-  | EAssignSucS l e w p σ σp :
-      σp !! l = Some p → to_val e = Some w → w = Shead (PrS p) →
+  | EAssignSucS l e w p z s σ σp :
+      σp !! l = Some p → to_val e = Some w →
+      PrP p z = s → (Shead s) = e →
      erased_head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:=Proph_tail p]>σp) [].
 
   (** Basic properties about the language *)
