@@ -29,7 +29,7 @@ Notation "l ↦ v" := (mapsto (L:=loc) (V:=val) l 1 v) (at level 20) : uPred_sco
 Program Definition accepts {M} {A : Type} (P : Stream A → Prop) (μ : Stream A)
   : uPred M :=
 {|
-  uPred_holds n x := ∃ μ', P (prepend_n_from n μ μ')
+  uPred_holds n x := ∃ μ', P (prepend_n_from (S n) μ μ')
 |}.
 Next Obligation.
 Proof.
@@ -37,7 +37,7 @@ Proof.
   induction Hn; first done.
   apply IHHn.
   destruct Hn1 as [μ' Hn1].
-  exists {| Shead := Snth m μ; Stail := μ'|}.
+  exists {| Shead := Snth (S m) μ; Stail := μ'|}.
   simpl in Hn1.
   by rewrite -prepend_n_from_Snth.
 Qed.
@@ -47,7 +47,7 @@ Lemma accept_accepts {M} {A : Type} (P : Stream A → Prop) (μ : Stream A) :
 Proof.
   intros Hμ.
   constructor => n ? _ _; cbv -[prepend_n_from].
-  eexists (Nat.iter n Stail μ).
+  eexists (Nat.iter (S n) Stail μ).
   by rewrite prepen_n_from_same.
 Qed.
 
@@ -60,6 +60,13 @@ Qed.
 Definition with_head {A : Type} M (a : A) (s : Stream A) : Prop :=
   M {| Shead := a; Stail := s |}.
 
+Lemma accepts_head {M} {A : Type} (P : Stream A → Prop) (μ : Stream A) :
+      (@accepts M _ P μ ⊢ ∃ μ', ⌜with_head P (Shead μ) μ'⌝)%I.
+Proof.
+  econstructor; unseal => n x _ [μ' Hμ'].
+  by exists (prepend_n_from n (Stail μ) μ').
+Qed.
+
 Lemma accepts_tail {M} {A} P μ :
   (@accepts M A P μ ⊢ ▷ @accepts M A (with_head P (Shead μ)) (Stail μ))%I.
 Proof.
@@ -70,13 +77,22 @@ Proof.
   exists μ'; done.
 Qed.
 
-Lemma accepts_tail' {M} {A} P μ :
-  (∃ μ' : Stream A, P μ') →
-  (▷ @accepts M A (with_head P (Shead μ)) (Stail μ) ⊢ @accepts M A P μ)%I.
+Lemma accepts_tail'_base {M} {A} P μ :
+  ((∃ μ', accepts (with_head P (Shead μ)) μ')
+   ∧ ▷ @accepts M A (with_head P (Shead μ)) (Stail μ) ⊢ @accepts M A P μ)%I.
 Proof.
   destruct μ as [h t]; rewrite /accepts /=.
   unseal; split => n ? ?.
-  destruct n; simpl; auto.
+  destruct n; simpl in *; auto.
+  -   intros [[? [? ?]] ?]; cbv in *; eauto.
+  - intros [[? [? ?]] [? ?]]; cbv; eauto.
+Qed.
+
+Lemma accepts_tail' {M} {A} P μ :
+  ((∃ μ', accepts (with_head P (Shead μ)) μ')
+     -∗ ▷ @accepts M A (with_head P (Shead μ)) (Stail μ) -∗ @accepts M A P μ)%I.
+Proof.
+  iIntros "? ?"; iApply accepts_tail'_base; iFrame.
 Qed.
 
 Lemma accepts_inh {M} {A} P μ :
@@ -136,14 +152,14 @@ Qed.
 
 Lemma maxmatch_ex {Σ} {A : Type} :
   (∀ (M : Stream A → Prop) (μ : Stream A),
-      (∃ p, accepts M p) → ∃ μ', @maxmatch Σ A M μ μ' ∧ accepts M μ')%I.
+      (∃ p, accepts M p) → ∃ μ', @maxmatch Σ A M μ μ')%I.
 Proof.
   iLöb as "IH".
   iIntros (M μ); iDestruct 1 as (p) "#Hp".
   pose proof ({| inhabitant := p |}).
   destruct (classic (∃ μ'', with_head M (Shead μ) μ'')) as [[μ'' Hμ'']|Hne];
     last first.
-  - iExists p; iSplit; auto. rewrite /maxmatch {2}fixpoint_unfold /=.
+  - iExists p. rewrite /maxmatch {2}fixpoint_unfold /=.
     iLeft; iSplit; auto. iIntros (a) "Ha".
     iDestruct (accepts_inh with "Ha") as %?; done.
   - iSpecialize ("IH" $! (with_head M (Shead μ)) (Stail μ) with "[]").
@@ -151,9 +167,6 @@ Proof.
     iDestruct "IH"as (μ') "IH".
     iExists {| Shead := (Shead μ); Stail := μ'|}.
     rewrite /maxmatch fixpoint_unfold /=.
-    iDestruct "IH" as "[IH Hμ']".
-    iSplit; last first.
-    { iApply accepts_tail'; eauto. }
     iRight; repeat iSplit; auto.
     { iExists μ''. iApply accept_accepts; eauto. }
     iDestruct "IH" as "[[IH Hn]|[IHi [IHheq IH]]]".
@@ -161,6 +174,19 @@ Proof.
       iLeft; iSplit; auto.
     + iNext. rewrite {2}fixpoint_unfold /=.
       iRight; repeat iSplit; auto.
+Qed.
+
+Lemma maxmatch_accepted {Σ} A M μ μ' :
+  (@maxmatch Σ A M μ μ' ⊢ accepts M μ')%I.
+Proof.
+  iRevert (M μ μ').
+  iLöb as "IH".
+  iIntros (M μ μ') "#Hmx".
+  rewrite /maxmatch {2}fixpoint_unfold /=.
+  iDestruct "Hmx" as "[[_ $]|(Hhdac & Heq & Hmx)]".
+  iSpecialize ("IH" with "Hmx").
+  iDestruct "Heq" as %<-.
+  iApply accepts_tail'; auto.
 Qed.
 
 Lemma maxmatch_accepts_head {Σ} {A} M μ μ' :
@@ -179,7 +205,12 @@ Qed.
 Definition cpvar `{heapIG Σ} l M μ' : iProp Σ :=
   (∃ μ, (mapsto (L:=loc) (V:=Stream val) l 1 μ) ∧ maxmatch M μ μ')%I.
 
-(* Notation "l ↦ₚ[ M ] μ" := (cpvar l μ M) (at level 20) : uPred_scope. *)
+Lemma cpvar_accepted `{heapIG Σ} l M μ' :
+  (cpvar l M μ' ⊢ accepts M μ')%I.
+Proof.
+  iDestruct 1 as (μ) "[_ Hμ']".
+  by iApply maxmatch_accepted.
+Qed.
 
 Section lang_rules.
   Context `{heapIG Σ}.
@@ -280,8 +311,7 @@ Section lang_rules.
 
   Lemma wp_create_pr E (M : (Stream val) → Prop) :
     (∃ s, M s) →
-    {{{ True }}} Create_Pr @ E {{{ l, RET (PrV l);
-                                ∃ μ', cpvar l M μ' ∧ accepts M μ'}}}.
+    {{{ True }}} Create_Pr @ E {{{ l, RET (PrV l); ∃ μ', cpvar l M μ'}}}.
   Proof.
     iIntros ([p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
     iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>"; iSplit.
@@ -291,7 +321,7 @@ Section lang_rules.
     eapply (not_elem_of_dom (D := gset loc)), is_fresh.
     iModIntro; iSplit=> //. iFrame. iApply "HΦ".
     rewrite /cpvar.
-    iDestruct (maxmatch_ex $! M v with "[]") as (μ') "[? ?]"; eauto.
+    iDestruct (maxmatch_ex $! M v with "[]") as (μ') "?"; eauto.
     { iExists p. by iApply accept_accepts. }
   Qed.
 

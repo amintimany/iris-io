@@ -79,6 +79,12 @@ Fixpoint Snth {A : Type} n (s : Stream A) : A :=
   | S n' => Snth n' (Stail s)
   end.
 
+Lemma Snth_Sconst {A : Type} n (a : A) :
+  Snth n (Sconst a) = a.
+Proof.
+  induction n; auto.
+Qed.
+
 Fixpoint prepend_n_from {A : Type} n (s s' : Stream A) :=
   match n with
     O => s'
@@ -90,7 +96,11 @@ Lemma prepend_n_from_Snth {A : Type} n {s s' : Stream A} :
   prepend_n_from (S n) s s' =
   prepend_n_from n s {| Shead := Snth n s; Stail := s' |}.
 Proof.
-Admitted.
+  simpl; revert s s'.
+  induction n as [|n] => s s'; simpl; auto.
+  f_equal.
+  by rewrite IHn.
+Qed.
 
 Lemma prepen_n_from_same {A} n (μ : Stream A) :
   prepend_n_from n μ (Nat.iter n Stail μ) = μ.
