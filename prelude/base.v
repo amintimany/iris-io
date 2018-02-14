@@ -67,15 +67,36 @@ Qed.
 
 Axiom Seq_eq : ∀ {A : Type} (x y : Stream A), Seq x y → x = y.
 
+Fixpoint Stake {A : Type} n (s : Stream A) : list A :=
+  match n with
+    O => []
+  | S n' => (Shead s) :: (Stake n' (Stail s))
+  end.
+
 Fixpoint Snth {A : Type} n (s : Stream A) : A :=
   match n with
   | O => Shead s
   | S n' => Snth n' (Stail s)
   end.
 
-Fixpoint take_nth_from {A : Type} n (s s' : Stream A) :=
+Fixpoint prepend_n_from {A : Type} n (s s' : Stream A) :=
   match n with
-    O => {| Shead := Shead s; Stail := Stail s' |}
-  | S n' => {| Shead := Shead s';
-              Stail := take_nth_from n' (Stail s) (Stail s') |}
+    O => s'
+  | S n' => {| Shead := Shead s;
+              Stail := prepend_n_from n' (Stail s) s' |}
   end.
+
+Lemma prepend_n_from_Snth {A : Type} n {s s' : Stream A} :
+  prepend_n_from (S n) s s' =
+  prepend_n_from n s {| Shead := Snth n s; Stail := s' |}.
+Proof.
+Admitted.
+
+Lemma prepen_n_from_same {A} n (μ : Stream A) :
+  prepend_n_from n μ (Nat.iter n Stail μ) = μ.
+Proof.
+  revert μ. induction n => μ; auto.
+  rewrite Nat_iter_S_r.
+  destruct μ as [h t]; simpl.
+  by rewrite IHn.
+Qed.

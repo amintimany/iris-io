@@ -6,14 +6,14 @@ From iris_io Require Export lang.
 From iris.proofmode Require Import tactics.
 From iris.base_logic Require Export gen_heap.
 Import uPred.
-Require Export Coq.Logic.Classical_Prop.
+Require Export Coq.Logic.Classical_Prop Coq.Logic.Classical_Pred_Type.
 
 (** The CMRA for the heap of the implementation. This is linked to the
     physical heap. *)
 Class heapIG Σ := HeapIG {
   heapI_invG : invG Σ;
   heapI_gen_heapG :> gen_heapG loc val Σ;
-  prophI_gen_heapG :> gen_heapG loc Proph Σ;
+  prophI_gen_heapG :> gen_heapG loc (Stream val) Σ;
 }.
 
 Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
@@ -26,7 +26,160 @@ Notation "l ↦{ q } v" := (mapsto (L:=loc) (V:=val) l q v)
   (at level 20, q at level 50, format "l  ↦{ q }  v") : uPred_scope.
 Notation "l ↦ v" := (mapsto (L:=loc) (V:=val) l 1 v) (at level 20) : uPred_scope.
 
-Notation "l ↦ₚ v" := (mapsto (L:=loc) (V:=Proph) l 1 v) (at level 20) : uPred_scope.
+Program Definition accepts {M} {A : Type} (P : Stream A → Prop) (μ : Stream A)
+  : uPred M :=
+{|
+  uPred_holds n x := ∃ μ', P (prepend_n_from n μ μ')
+|}.
+Next Obligation.
+Proof.
+  intros ? ? ? ? n1 n2 ? ? Hn1 _ Hn; simpl in *.
+  induction Hn; first done.
+  apply IHHn.
+  destruct Hn1 as [μ' Hn1].
+  exists {| Shead := Snth m μ; Stail := μ'|}.
+  simpl in Hn1.
+  by rewrite -prepend_n_from_Snth.
+Qed.
+
+Lemma accept_accepts {M} {A : Type} (P : Stream A → Prop) (μ : Stream A) :
+  P μ → (@accepts M _ P μ)%I.
+Proof.
+  intros Hμ.
+  constructor => n ? _ _; cbv -[prepend_n_from].
+  eexists (Nat.iter n Stail μ).
+  by rewrite prepen_n_from_same.
+Qed.
+
+Global Instance accepts_plain {M} {A} P (μ : Stream A) :
+  Plain (@accepts M _ P μ).
+Proof.
+  by constructor; rewrite /Persistent; unseal.
+Qed.
+
+Definition with_head {A : Type} M (a : A) (s : Stream A) : Prop :=
+  M {| Shead := a; Stail := s |}.
+
+Lemma accepts_tail {M} {A} P μ :
+  (@accepts M A P μ ⊢ ▷ @accepts M A (with_head P (Shead μ)) (Stail μ))%I.
+Proof.
+  destruct μ as [h t]; rewrite /accepts /=.
+  unseal; split => n ? ?.
+  intros [μ' Hμ'].
+  destruct n; first done; simpl in *.
+  exists μ'; done.
+Qed.
+
+Lemma accepts_tail' {M} {A} P μ :
+  (∃ μ' : Stream A, P μ') →
+  (▷ @accepts M A (with_head P (Shead μ)) (Stail μ) ⊢ @accepts M A P μ)%I.
+Proof.
+  destruct μ as [h t]; rewrite /accepts /=.
+  unseal; split => n ? ?.
+  destruct n; simpl; auto.
+Qed.
+
+Lemma accepts_inh {M} {A} P μ :
+  ((@accepts M A P μ) → ∃ μ', ⌜P μ'⌝)%I.
+Proof.
+  constructor=> n x Hx _; unseal; simpl.
+  intros ? ? ? ? ? [μ' Hμ'].
+  cbv; eauto.
+Qed.
+
+Program Definition maxmatch_pre {Σ} {A : Type}
+        (P : (prodC (leibnizC (Stream A → Prop))
+                              (prodC (leibnizC (Stream A))
+                                     (leibnizC (Stream A)))) -n> iProp Σ) :
+           (prodC (leibnizC (Stream A → Prop))
+                            (prodC (leibnizC (Stream A))
+                                   (leibnizC (Stream A)))) -n> iProp Σ :=
+  λne k,
+  let (M, k') := k in
+  let (μ, m) := k' in
+  (((∀ μ', accepts (with_head M (Shead μ)) μ' → False) ∧ accepts M m) ∨
+   ((∃ μ', accepts (with_head M (Shead μ)) μ') ∧ ⌜Shead m = Shead μ⌝ ∧
+          ▷ P (with_head M (Shead μ), (Stail μ, Stail m))))%I.
+Next Obligation.
+Proof.
+  by intros ? ? P n (M, (μ, m)) (M', (μ', m'))
+         [HM%leibniz_equiv [Hμ%leibniz_equiv Hm%leibniz_equiv]]; simpl in *; subst.
+Qed.
+
+Global Instance maxmatch_pre_contr {Σ} {A : Type} :
+  Contractive (@maxmatch_pre Σ A).
+Proof.
+  intros n f f' Hf (M, (μ, m)); rewrite /maxmatch_pre /=.
+  apply or_ne; auto.
+  repeat apply and_ne; auto.
+  apply later_contractive; auto.
+  destruct n as [|n]; auto; simpl in *.
+  by rewrite Hf.
+Qed.
+
+Definition maxmatch {Σ} {A : Type} (M : Stream A → Prop) μ μ' :=
+  fixpoint (@maxmatch_pre Σ A) (M, (μ, μ')).
+
+Global Instance maxmatch_plain {Σ} {A : Type} (M : Stream A → Prop) μ μ' :
+  Plain (@maxmatch Σ _ M μ μ').
+Proof.
+  unfold Plain; iIntros "".
+  iRevert (M μ μ').
+  iLöb as "IH". iIntros (M μ μ') "H".
+  rewrite /maxmatch {3 4}fixpoint_unfold /=.
+  iDestruct "H" as "[[#H1 #H2]|(#H1 & #H2 & H3)]".
+  - iLeft; iSplit; iAlways; auto.
+  - iRight; repeat iSplitR; try by iAlways.
+    iDestruct ("IH" with "H3") as "#IH'".
+    by iAlways; iNext.
+Qed.
+
+Lemma maxmatch_ex {Σ} {A : Type} :
+  (∀ (M : Stream A → Prop) (μ : Stream A),
+      (∃ p, accepts M p) → ∃ μ', @maxmatch Σ A M μ μ' ∧ accepts M μ')%I.
+Proof.
+  iLöb as "IH".
+  iIntros (M μ); iDestruct 1 as (p) "#Hp".
+  pose proof ({| inhabitant := p |}).
+  destruct (classic (∃ μ'', with_head M (Shead μ) μ'')) as [[μ'' Hμ'']|Hne];
+    last first.
+  - iExists p; iSplit; auto. rewrite /maxmatch {2}fixpoint_unfold /=.
+    iLeft; iSplit; auto. iIntros (a) "Ha".
+    iDestruct (accepts_inh with "Ha") as %?; done.
+  - iSpecialize ("IH" $! (with_head M (Shead μ)) (Stail μ) with "[]").
+    { iNext. iExists μ''. by iApply accept_accepts. }
+    iDestruct "IH"as (μ') "IH".
+    iExists {| Shead := (Shead μ); Stail := μ'|}.
+    rewrite /maxmatch fixpoint_unfold /=.
+    iDestruct "IH" as "[IH Hμ']".
+    iSplit; last first.
+    { iApply accepts_tail'; eauto. }
+    iRight; repeat iSplit; auto.
+    { iExists μ''. iApply accept_accepts; eauto. }
+    iDestruct "IH" as "[[IH Hn]|[IHi [IHheq IH]]]".
+    + iNext. rewrite {1}fixpoint_unfold /=.
+      iLeft; iSplit; auto.
+    + iNext. rewrite {2}fixpoint_unfold /=.
+      iRight; repeat iSplit; auto.
+Qed.
+
+Lemma maxmatch_accepts_head {Σ} {A} M μ μ' :
+  (@maxmatch Σ A M μ μ' -∗
+            (∃ μ'', accepts (with_head M (Shead μ)) μ'') -∗
+            ⌜Shead μ' = Shead μ⌝ ∗
+                             ▷ maxmatch (with_head M (Shead μ)) (Stail μ) (Stail μ'))%I.
+Proof.
+  iIntros "Hmx Hac"; iDestruct "Hac" as (μ'') "Hac".
+  rewrite /maxmatch {1}fixpoint_unfold /=.
+  iDestruct "Hmx" as "[[Hmx _] | (_ & Hmx1 & Hmx2)]".
+  - iExFalso; iApply "Hmx"; auto.
+  - iFrame.
+Qed.
+
+Definition cpvar `{heapIG Σ} l M μ' : iProp Σ :=
+  (∃ μ, (mapsto (L:=loc) (V:=Stream val) l 1 μ) ∧ maxmatch M μ μ')%I.
+
+(* Notation "l ↦ₚ[ M ] μ" := (cpvar l μ M) (at level 20) : uPred_scope. *)
 
 Section lang_rules.
   Context `{heapIG Σ}.
@@ -125,72 +278,55 @@ Section lang_rules.
     iModIntro. iSplit=>//. iFrame. by iApply "HΦ".
   Qed.
 
-  Record PrP_eq A (f : A → Stream expr) A' (f' : A' → Stream expr) :=
-    { PrA_eq : A = A';
-      PrF_eq :  match PrA_eq in _ = z return z → Stream expr with
-                  eq_refl => f end = f' }.
-  Lemma Proph_equiv_refl A f : PrP_eq A f A f.
+  Lemma wp_create_pr E (M : (Stream val) → Prop) :
+    (∃ s, M s) →
+    {{{ True }}} Create_Pr @ E {{{ l, RET (PrV l);
+                                ∃ μ', cpvar l M μ' ∧ accepts M μ'}}}.
   Proof.
-    unshelve econstructor; eauto.
-  Qed.
-
-  Lemma existT_Prp_eq A f A' f' :
-    existT A f = existT A' f' → PrP_eq A f A' f'.
-  Proof.
-    intros Heq.
-    pose proof (f_equal projT1 Heq) as Heq'; simpl in *.
-    destruct Heq'.
-    rewrite (inj_pair2 _ _ _ _ _ Heq).
-    apply Proph_equiv_refl.
-  Qed.
-
-  Lemma wp_create_pr E A f :
-    (∀ x, ∃ s, proph_to_expr s = f x) →
-    (∀ n s s',
-        Elem (proph_to_expr s) f → Elem (proph_to_expr s') f →
-        Elem (proph_to_expr (take_nth_from n s s')) f) →
-    (∃ p, Elem (proph_to_expr p) f) →
-    {{{ True }}} Create_Pr A f @ E
-    {{{ l, RET (PrV l); ∃ p, l ↦ₚ p ∧ ⌜PrP_eq (PrA p) (PrP p) A f⌝}}}.
-  Proof.
-    iIntros (Hv He [p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
+    iIntros ([p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
     iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>"; iSplit.
-    { iPureIntro. eexists _, _, _; simpl. eapply (create_pr _ _ _ Hv He Hf). }
+    { iPureIntro. eexists _, _, _; simpl. eapply (create_pr (Sconst UnitV)). }
     iNext; iIntros (v2 σ2 efs Hstep). inversion Hstep; simplify_eq.
     iMod (@gen_heap_alloc with "Hσp") as "[Hσp Hl]".
     eapply (not_elem_of_dom (D := gset loc)), is_fresh.
     iModIntro; iSplit=> //. iFrame. iApply "HΦ".
-    iExists _; iFrame. iPureIntro. simpl.
-    by apply existT_Prp_eq.
+    rewrite /cpvar.
+    iDestruct (maxmatch_ex $! M v with "[]") as (μ') "[? ?]"; eauto.
+    { iExists p. by iApply accept_accepts. }
   Qed.
 
-  Lemma wp_assign_pr E l e v p :
+  Lemma wp_assign_pr E l e v M μ :
     IntoVal e v →
-    (∃ z s, PrP p z = s ∧ e = Shead s) →
-    {{{ l ↦ₚ p }}} Assign_Pr (Pr l) e @ E
-                   {{{ RET UnitV; ⌜v = Shead (PrS p)⌝ ∗ l ↦ₚ Proph_tail p}}}.
+    {{{ cpvar l M μ ∗ ∃ μ', accepts (with_head M v) μ' }}}
+      Assign_Pr (Pr l) e @ E
+      {{{ RET UnitV; ⌜v = Shead μ⌝ ∗ cpvar l (with_head M v) (Stail μ)}}}.
   Proof.
-    iIntros (<-%of_to_val (z & s & Hz & Hs) Φ) "Hpr HΦ".
-    destruct (classic (v = (Shead (PrS p)))); first simplify_eq.
+    iIntros (<-%of_to_val Φ) "[Hp Hac] HΦ".
+    iDestruct "Hp" as (iμ) "[Hp1 Hp2]".
+    destruct (classic (v = (Shead iμ))); first simplify_eq.
     - iApply wp_lift_atomic_head_step_no_fork; auto.
       iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>".
-      iDestruct (@gen_heap_valid with "Hσp Hpr") as %?.
+      iDestruct (@gen_heap_valid with "Hσp Hp1") as %?.
       iSplit.
       { iPureIntro. eexists _, _, _; simpl. econstructor; eauto. }
+      iDestruct (maxmatch_accepts_head with "Hp2 Hac") as "[% Hmm]".
       iNext; iIntros (v2 σ2 efs Hstep); inv_head_step.
-      iMod (@gen_heap_update with "Hσp Hpr") as "[$ Hpr]".
+      iMod (@gen_heap_update with "Hσp Hp1") as "[$ Hp1]".
       iModIntro; iSplit=> //. iFrame. iApply "HΦ"; auto.
+      iSplit; auto.
+      iExists _; iFrame.
     - iClear "HΦ".
       iLöb as "IH".
       iApply wp_lift_head_step; auto.
       iIntros ([σ1 σ1p]) "[Hσ Hσp] /=".
-      iDestruct (@gen_heap_valid with "Hσp Hpr") as %?.
+      iDestruct (@gen_heap_valid with "Hσp Hp1") as %?.
       iMod (fupd_intro_mask') as "HM"; last iModIntro; first set_solver.
       iSplit.
       { iPureIntro. eexists _, _, _; simpl. eapply AssignFailS; eauto. }
       iNext; iIntros (v2 σ2 efs Hstep); inv_head_step.
       iMod "HM" as "_". iModIntro.
-      iFrame. iSplit; last done. iApply "IH"; auto.
+      iFrame. iSplit; last done.
+      iApply ("IH" with "Hp1 Hp2 Hac").
   Qed.
 
   Lemma wp_rand E Φ :
