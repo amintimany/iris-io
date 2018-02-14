@@ -252,7 +252,7 @@ Module Plang.
   | AssignFailS l e w p σ σp :
       σp !! l = Some p → to_val e = Some w → w ≠ Shead p →
       head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) []
-  |RandS b σ : head_step Rand σ (Bool b) σ [].
+  | RandS b σ : head_step Rand σ (Bool b) σ [].
 
   (** Basic properties about the language *)
     Lemma to_of_val v : to_val (of_val v) = Some v.
