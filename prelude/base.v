@@ -24,7 +24,7 @@ Proof.
   econstructor; auto.
 Qed.
 
-Axiom Seq_eq : ∀ {A : Type} (x y : Stream A), Seq x y → x = y.
+(* Axiom Seq_eq : ∀ {A : Type} (x y : Stream A), Seq x y → x = y. *)
 
 Fixpoint Stake {A : Type} n (s : Stream A) : list A :=
   match n with
