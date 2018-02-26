@@ -64,9 +64,9 @@ Section coin.
     iApply (wp_create_pr _ coin_proph); auto using coin_proph_inh.
     iNext. iIntros (l) "Hl"; simpl. iDestruct "Hl" as (p) "Hl".
     iApply wp_value. iApply "HΦ".
-    iDestruct (cpvar_accepted with "Hl") as "#Hac".
-    iDestruct (accepts_head with "Hac") as %[μ Hμ].
-    destruct (Hμ 0) as [b Hb].
+    unfold cpvar.
+    iDestruct (cpvar_contains with "Hl") as %Hac.
+    destruct (Hac 0) as [b Hb].
     iExists b, p; iFrame. iRight; iFrame.
     { by iPureIntro. }
   Qed.
@@ -83,9 +83,8 @@ Section coin.
     iDestruct "Hc" as "[Hc|[Hc Hh]]".
     - iApply (wp_store with "[$Hc]"). iNext. iIntros "Hc".
       iApply "HΦ".
-      iDestruct (cpvar_accepted with "Hl") as "#Hac".
-      iDestruct (accepts_head with "Hac") as %[μ Hμ].
-      destruct (Hμ 0) as [r Hr].
+      iDestruct (cpvar_contains with "Hl") as %Hac.
+      destruct (Hac 0) as [r Hr].
       iExists r, p; iFrame. iRight; iFrame.
       { by iPureIntro. }
     - iDestruct "Hh" as %Hh.
@@ -110,7 +109,6 @@ Section coin.
       iApply wp_value.
       iApply "HΦ".
       iExists p; iFrame.
-      iLeft; auto.
     - iDestruct "Hh" as %Hh.
       iApply (wp_bind (fill [CaseCtx _ _])).
       iApply (wp_load with "[$Hc]"). iNext. iIntros "Hc". simpl.
@@ -123,7 +121,7 @@ Section coin.
       iApply wp_pure_step_later; auto; iNext. asimpl.
       iApply (wp_bind (fill [AppRCtx (RecV _)])).
       iApply (wp_assign_pr with "[$Hl]").
-      { iExists (Sconst (#♭v r)). iApply accept_accepts.
+      { iExists (Sconst (#♭v r)). iPureIntro.
         intros n; exists r. destruct n; first done. apply (Snth_Sconst (S n)). }
       iNext. iIntros "[HP Hl]". iDestruct "HP" as %HnP.
       simpl.
@@ -133,7 +131,6 @@ Section coin.
       iApply "HΦ".
       rewrite coin_proph_after_read_eq.
       iExists _; iFrame.
-      by iLeft.
   Qed.
 
 End coin.
