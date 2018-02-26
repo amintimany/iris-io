@@ -8,3 +8,45 @@ Verifies with
 - [Autosubst](https://github.com/uds-psl/autosubst/commit/d0d73557979796b3d4be7aac72135581c33f26f7)
 
 To verify, just type `make`.
+
+## Structure
+
+- `prelude/base.v` - Streams
+- `lang.v` - Syntax and instrumented small-step semantics of a programming
+  language with incremental prophecy variables. Prophecy variable creation
+  nondeterministically picks a stream of prophecy values; prophecy variable
+  assignment loops if the assigned value does not match the first prophecy
+  value of the stream, and otherwise replaces the stream by its tail in the
+  prophecy heap.
+- `lang_erased.v` - An alternative small-step semantics for the same language,
+  where the prophecy heap simply tracks the set of allocated prophecy variable
+  identifiers. Creation does not branch; assignment does not loop.
+- `erasure.v` - Proves that if a program is safe under the instrumented
+  semantics, then it is safe under the erased semantics.
+- `rules.v` - Proves Hoare rules for the commands of the programming language
+  against the instrumented semantics. These rules expose the prophecy variables
+  as *constrained* incremental prophecy variables: an arbitrary (satisfiable)
+  predicate on streams can be provided at prophecy variable creation time; the
+  postcondition asserts that the prophecy value stream satisfies the predicate.
+- `coin.v` - Verifies the *coin toss* concurrent data structure.
+
+## Axioms used
+
+```
+$ coqchk -o -R . iris_io -silent -admit stdpp.pretty iris_io.erasure iris_io.coin
+
+CONTEXT SUMMARY
+===============
+
+* Theory: Set is predicative
+
+* Axioms:
+    Coq.Logic.FunctionalExtensionality.functional_extensionality_dep
+    Coq.Logic.PropExtensionality.propositional_extensionality
+    Coq.Logic.Classical_Prop.classic
+    iris.base_logic.lib.iprop.iProp_solution.iPreProp
+    iris.base_logic.lib.iprop.iProp_solution.iProp_fold
+    iris.base_logic.lib.iprop.iProp_solution.iProp_fold_unfold
+    iris.base_logic.lib.iprop.iProp_solution.iProp_unfold
+    iris.base_logic.lib.iprop.iProp_solution.iProp_unfold_fold
+```
