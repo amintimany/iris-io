@@ -1,12 +1,13 @@
 From iris.program_logic Require Export weakestpre.
 From iris.program_logic Require Import ectx_lifting.
-From iris.base_logic Require Export invariants big_op.
+From iris.base_logic Require Export invariants.
 From iris.algebra Require Import auth frac agree gmap.
 From iris_io Require Export lang.
 From iris.proofmode Require Import tactics.
 From iris.base_logic Require Export gen_heap.
 Import uPred.
-Require Export Coq.Logic.Classical_Prop Coq.Logic.Classical_Pred_Type.
+
+Definition io_monoid := (authR (optionUR (exclR (leibnizC ioSpec)))).
 
 (** The CMRA for the heap of the implementation. This is linked to the
     physical heap. *)
@@ -14,17 +15,23 @@ Class heapIG Σ := HeapIG {
   heapI_invG : invG Σ;
   heapI_gen_heapG :> gen_heapG loc val Σ;
   prophI_gen_heapG :> gen_heapG loc (Stream val) Σ;
+  ioI_exclG :> inG Σ io_monoid;
+  γio : gname
 }.
 
-Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
+Program Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
   iris_invG := heapI_invG;
-  state_interp := λ σ, ((gen_heap_ctx σ.1) ∗ (gen_heap_ctx σ.2))%I
+  state_interp := λ σ, ((gen_heap_ctx (Heap σ))
+                          ∗ (gen_heap_ctx (Proph σ))
+                          ∗ @own _ io_monoid _ γio (● Some (Excl (ioState σ))) )%I
 }.
 Global Opaque iris_invG.
 
 Notation "l ↦{ q } v" := (mapsto (L:=loc) (V:=val) l q v)
   (at level 20, q at level 50, format "l  ↦{ q }  v") : uPred_scope.
 Notation "l ↦ v" := (mapsto (L:=loc) (V:=val) l 1 v) (at level 20) : uPred_scope.
+
+Definition ownIO `{heapIG Σ} T := @own _ io_monoid _ γio (◯ Some (Excl T)).
 
 Definition with_head {A : Type} M (a : A) (s : Stream A) : Prop :=
   M {| Shead := a; Stail := s |}.
@@ -249,9 +256,9 @@ Section lang_rules.
     {{{ True }}} Create_Pr @ E {{{ l, RET (PrV l); ∃ μ', cpvar l M μ'}}}.
   Proof.
     iIntros ([p Hf] Φ) "_ HΦ". iApply wp_lift_atomic_head_step_no_fork; auto.
-    iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>"; iSplit.
+    iIntros ([σ1 σ1p]) "[Hσ [Hσp ?]] /= !>"; iSplit.
     { iPureIntro. eexists _, _, _; simpl. eapply (create_pr (Sconst UnitV)). }
-    iNext; iIntros (v2 σ2 efs Hstep). inversion Hstep; simplify_eq.
+    iNext; iIntros (v2 σ2 efs Hstep). inversion Hstep;
     iMod (@gen_heap_alloc with "Hσp") as "[Hσp Hl]".
     eapply (not_elem_of_dom (D := gset loc)), is_fresh.
     iModIntro; iSplit=> //. iFrame. iApply "HΦ".
@@ -269,7 +276,7 @@ Section lang_rules.
     iDestruct "Hp" as (iμ) "[Hp1 Hp2]".
     destruct (classic (v = (Shead iμ))); first simplify_eq.
     - iApply wp_lift_atomic_head_step_no_fork; auto.
-      iIntros ([σ1 σ1p]) "[Hσ Hσp] /= !>".
+      iIntros ([σ1 σ1p]) "[Hσ [Hσp ?]] /= !>".
       iDestruct (@gen_heap_valid with "Hσp Hp1") as %?.
       iSplit.
       { iPureIntro. eexists _, _, _; simpl. econstructor; eauto. }
@@ -282,7 +289,7 @@ Section lang_rules.
     - iClear "HΦ".
       iLöb as "IH".
       iApply wp_lift_head_step; auto.
-      iIntros ([σ1 σ1p]) "[Hσ Hσp] /=".
+      iIntros ([σ1 σ1p]) "[Hσ [Hσp ?]] /=".
       iDestruct (@gen_heap_valid with "Hσp Hp1") as %?.
       iMod (fupd_intro_mask') as "HM"; last iModIntro; first set_solver.
       iSplit.
@@ -311,10 +318,10 @@ Section lang_rules.
   Lemma wp_fork E e Φ :
     ▷ (|={E}=> Φ UnitV) ∗ ▷ WP e {{ _, True }} ⊢ WP Fork e @ E {{ Φ }}.
   Proof.
-  rewrite -(wp_lift_pure_det_head_step (Fork e) Unit [e]) //=; eauto.
-  - iIntros "[H1 H2]"; iModIntro; iNext; iModIntro; iFrame.
-      by iApply wp_value_fupd.
-  - intros; inv_head_step; eauto.
+    rewrite -(wp_lift_pure_det_head_step (Fork e) Unit [e]) //=; eauto.
+    - iIntros "[H1 H2]"; iModIntro; iNext; iModIntro; iFrame.
+        by iApply wp_value_fupd.
+    - intros; inv_head_step; eauto.
   Qed.
 
   Local Ltac solve_exec_safe := intros; subst; do 3 eexists; econstructor; eauto.
@@ -362,5 +369,40 @@ Section lang_rules.
   Global Instance wp_nat_binop op a b :
     PureExec True (BinOp op (#n a) (#n b)) (of_val (binop_eval op a b)).
   Proof. solve_pure_exec. Qed.
+
+  Lemma wp_io E T t e v v' :
+    IntoVal e v →
+    {{{ ownIO T ∗ ⌜T [(t, v, v')]⌝ }}}
+    IO t e @ E
+    {{{ w, RET w; ownIO (λ τ, T ((t, v, w) :: τ))}}}.
+  Proof.
+    iIntros (<-%of_to_val Φ) "[HoT Hio] HΦ"; iDestruct "Hio" as %Hio.
+    iApply wp_lift_atomic_head_step_no_fork; simpl; auto.
+    iIntros (σ1) "(Hh & Hp & Hi)".
+    iDestruct (own_valid_2 with "Hi HoT") as "#Hvl".
+    iDestruct "Hvl" as %Hvl%auth_valid_discrete_2;
+      destruct Hvl as [Hvl%Excl_included%leibniz_equiv _];
+      subst.
+    iModIntro; iSplit; first iPureIntro; eauto.
+    iNext; iIntros (e2 σ2 efs Hstp).
+    inversion Hstp; subst.
+    match goal with
+       H : to_val (of_val _) = _ |- _ => erewrite to_of_val in H
+    end.
+    simplify_eq.
+    iMod (own_update with "[HoT Hi]") as "HIO";
+      first eapply auth_update; [ | erewrite own_op; iFrame | ].
+    eapply
+      (@local_update_unital_discrete
+         (optionUR (exclR (leibnizC (list (ioTag * val * val) → Prop))))
+         _ _ _ (Excl' (λ τ, ioState σ1 ((t, _, _) :: τ)))
+         (Excl' (λ τ, ioState σ1 ((t, _, _) :: τ)))).
+    { intros z _ Heq%leibniz_equiv; destruct z; first done.
+      split; first done. by rewrite right_id. }
+    iDestruct "HIO" as "[Hio HoT]".
+    iModIntro; iFrame; iSplit; first done.
+    rewrite to_of_val; simpl.
+    by iApply "HΦ".
+  Qed.
 
 End lang_rules.

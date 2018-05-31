@@ -14,6 +14,8 @@ Module Plang.
   Instance binop_dec_eq (op op' : binop) : Decision (op = op').
   Proof. solve_decision. Defined.
 
+  Definition ioTag := positive.
+
   Inductive expr :=
   | Var (x : var)
   | Rec (e : {bind 2 of expr})
@@ -53,7 +55,9 @@ Module Plang.
   | Create_Pr
   | Assign_Pr (e1 e2 : expr)
   (* Random bit *)
-  | Rand.
+  | Rand
+  (* I/O *)
+  | IO (t : ioTag) (e : expr).
 
   Instance Ids_expr : Ids expr. derive. Defined.
   Instance Rename_expr : Rename expr. derive. Defined.
@@ -154,7 +158,8 @@ Module Plang.
   | CasMCtx (v0 : val) (e2 : expr)
   | CasRCtx (v0 : val) (v1 : val)
   | Assign_PrLCtx (e2 : expr)
-  | Assign_PrRCtx (v1 : val).
+  | Assign_PrRCtx (v1 : val)
+  | IOCtx (t : ioTag).
 
   Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
     match Ki with
@@ -182,9 +187,30 @@ Module Plang.
     | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
     | Assign_PrLCtx e2 => Assign_Pr e e2
     | Assign_PrRCtx v1 => Assign_Pr (of_val v1) e
+    | IOCtx t => IO t e
     end.
 
-  Definition state : Type := (gmap loc val) * (gmap loc (Stream val)).
+  Definition ioSpec := (list (ioTag * val * val)) → Prop.
+
+  Record state : Type :=
+    { Heap : gmap loc val;
+      Proph : gmap loc (Stream val);
+      ioState : ioSpec
+    }.
+
+  Global Instance state_inh : Inhabited state.
+  Proof.
+    exact {|inhabitant := {| Heap := ∅; Proph := ∅; ioState := λ _, False |} |}.
+  Qed.
+
+  Definition update_heap σ h :=
+    {| Heap := h; Proph := Proph σ; ioState := ioState σ |}.
+
+  Definition update_proph σ ι :=
+    {| Heap := Heap σ; Proph := ι; ioState := ioState σ |}.
+
+  Definition update_ioState σ T :=
+    {| Heap := Heap σ; Proph := Proph σ; ioState := T |}.
 
   Inductive head_step : expr → state → expr → state → list expr → Prop :=
   (* β *)
@@ -224,38 +250,41 @@ Module Plang.
   | ForkS e σ:
       head_step (Fork e) σ Unit σ [e]
   (* Reference Types *)
-  | AllocS e v σ σp l :
-     to_val e = Some v → σ !! l = None →
-     head_step (Alloc e) (σ, σp) (Loc l) (<[l:=v]>σ, σp) []
+  | AllocS e v σ l :
+     to_val e = Some v → (Heap σ) !! l = None →
+     head_step (Alloc e) σ (Loc l) (update_heap σ (<[l:=v]>(Heap σ))) []
   | LoadS l v σ :
-     σ.1 !! l = Some v →
+     (Heap σ) !! l = Some v →
      head_step (Load (Loc l)) σ (of_val v) σ []
-  | StoreS l e v σ σp :
-     to_val e = Some v → is_Some (σ !! l) →
-     head_step (Store (Loc l) e) (σ, σp) Unit (<[l:=v]>σ, σp) []
+  | StoreS l e v σ :
+     to_val e = Some v → is_Some ((Heap σ) !! l) →
+     head_step (Store (Loc l) e) σ Unit (update_heap σ (<[l:=v]>(Heap σ))) []
   (* Compare and swap *)
   | CasFailS l e1 v1 e2 v2 vl σ :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
-     σ.1 !! l = Some vl → vl ≠ v1 →
+     (Heap σ) !! l = Some vl → vl ≠ v1 →
      head_step (CAS (Loc l) e1 e2) σ (#♭ false) σ []
-  | CasSucS l e1 v1 e2 v2 σ σp :
+  | CasSucS l e1 v1 e2 v2 σ :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
-     σ !! l = Some v1 →
-     head_step (CAS (Loc l) e1 e2) (σ, σp) (#♭ true) (<[l:=v2]>σ, σp) []
+     (Heap σ) !! l = Some v1 →
+     head_step (CAS (Loc l) e1 e2) σ (#♭ true) (update_heap σ (<[l:=v2]>(Heap σ))) []
   (* Prophecy operational semantics *)
-  | Create_PrS v σ σp :
-      head_step Create_Pr (σ, σp) (Pr (fresh (dom (gset loc) σp)))
-                (σ, <[fresh (dom (gset loc) σp):= v]>σp) []
-  | AssignSucS l e p σ σp :
-     σp !! l = Some p → to_val e = Some (Shead p) →
-     head_step (Assign_Pr (Pr l) e) (σ, σp) Unit (σ, <[l:= Stail p]>σp) []
-  | AssignFailS l e w p σ σp :
-      σp !! l = Some p → to_val e = Some w → w ≠ Shead p →
-      head_step (Assign_Pr (Pr l) e) (σ, σp) (Assign_Pr (Pr l) e) (σ, σp) []
-  | RandS b σ : head_step Rand σ (Bool b) σ [].
+  | Create_PrS v σ :
+      head_step Create_Pr σ (Pr (fresh (dom (gset loc) (Proph σ))))
+                (update_proph σ (<[fresh (dom (gset loc) (Proph σ)):= v]>(Proph σ))) []
+  | AssignSucS l e p σ :
+     (Proph σ) !! l = Some p → to_val e = Some (Shead p) →
+     head_step (Assign_Pr (Pr l) e) σ Unit (update_proph σ (<[l:= Stail p]>(Proph σ))) []
+  | AssignFailS l e w p σ :
+      (Proph σ) !! l = Some p → to_val e = Some w → w ≠ Shead p →
+      head_step (Assign_Pr (Pr l) e) σ (Assign_Pr (Pr l) e) σ []
+  | RandS b σ : head_step Rand σ (Bool b) σ []
+  | IOS t e v v' σ : to_val e = Some v → (∃ τ, (ioState σ) ((t, v, v') :: τ)) →
+                    head_step (IO t e) σ (of_val v')
+                              (update_ioState σ (λ τ, (ioState σ) ((t, v, v') :: τ))) [].
 
   (** Basic properties about the language *)
-    Lemma to_of_val v : to_val (of_val v) = Some v.
+  Lemma to_of_val v : to_val (of_val v) = Some v.
   Proof. by induction v; simplify_option_eq. Qed.
 
   Lemma of_to_val e v : to_val e = Some v → of_val v = e.
@@ -291,14 +320,14 @@ Module Plang.
            end; auto.
   Qed.
 
-  Lemma alloc_fresh e v σ σp :
-    let l := fresh (dom (gset loc) σ) in
-    to_val e = Some v → head_step (Alloc e) (σ, σp) (Loc l) (<[l:=v]>σ, σp) [].
+  Lemma alloc_fresh e v σ :
+    let l := fresh (dom (gset loc) (Heap σ)) in
+    to_val e = Some v → head_step (Alloc e) σ (Loc l) (update_heap σ (<[l:=v]>(Heap σ))) [].
   Proof. by intros; apply AllocS, (not_elem_of_dom (D:=gset loc)), is_fresh. Qed.
 
-  Lemma create_pr v σ σp :
-    head_step Create_Pr (σ, σp) (Pr (fresh (dom (gset loc) σp)))
-              (σ, <[fresh (dom (gset loc) σp):= v ]>σp) [].
+  Lemma create_pr v σ :
+    head_step Create_Pr σ (Pr (fresh (dom (gset loc) (Proph σ))))
+              (update_proph σ (<[fresh (dom (gset loc) (Proph σ)):= v ]>(Proph σ))) [].
   Proof. intros; eapply Create_PrS. Qed.
 
   Lemma val_head_stuck e1 σ1 e2 σ2 efs : head_step e1 σ1 e2 σ2 efs → to_val e1 = None.
