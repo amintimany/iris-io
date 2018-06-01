@@ -19,6 +19,8 @@ Module Plang.
   Inductive expr :=
   | Var (x : var)
   | Rec (e : {bind 2 of expr})
+  | Lam (e : {bind expr})
+  | LetIn (e : expr) (e : {bind expr})
   | App (e1 e2 : expr)
   (* Base Types *)
   | Unit
@@ -73,6 +75,7 @@ Module Plang.
 
   Inductive val :=
   | RecV (e : {bind 1 of expr})
+  | LamV (e : {bind 1 of expr})
   | TLamV (e : {bind 1 of expr})
   | UnitV
   | NatV (n : nat)
@@ -105,6 +108,7 @@ Module Plang.
   Fixpoint of_val (v : val) : expr :=
     match v with
     | RecV e => Rec e
+    | LamV e => Lam e
     | TLamV e => TLam e
     | UnitV => Unit
     | NatV v => Nat v
@@ -120,6 +124,7 @@ Module Plang.
   Fixpoint to_val (e : expr) : option val :=
     match e with
     | Rec e => Some (RecV e)
+    | Lam e => Some (LamV e)
     | TLam e => Some (TLamV e)
     | Unit => Some UnitV
     | Nat n => Some (NatV n)
@@ -137,6 +142,7 @@ Module Plang.
   Inductive ectx_item :=
   | AppLCtx (e2 : expr)
   | AppRCtx (v1 : val)
+  | LetInCtx (e2 : expr)
   | TAppCtx
   | PairLCtx (e2 : expr)
   | PairRCtx (v1 : val)
@@ -165,6 +171,7 @@ Module Plang.
     match Ki with
     | AppLCtx e2 => App e e2
     | AppRCtx v1 => App (of_val v1) e
+    | LetInCtx e2 => LetIn e e2
     | TAppCtx => TApp e
     | PairLCtx e2 => Pair e e2
     | PairRCtx v1 => Pair (of_val v1) e
@@ -222,6 +229,12 @@ Module Plang.
   | BetaS e1 e2 v2 σ :
       to_val e2 = Some v2 →
       head_step (App (Rec e1) e2) σ e1.[(Rec e1), e2/] σ []
+  | ZetaS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      head_step (LetIn e1 e2) σ e2.[e1/] σ []
+  | LamBetaS e1 e2 v2 σ :
+      to_val e2 = Some v2 →
+      head_step (App (Lam e1) e2) σ e1.[e2/] σ []
   (* Products *)
   | FstS e1 v1 e2 v2 σ :
       to_val e1 = Some v1 → to_val e2 = Some v2 →
