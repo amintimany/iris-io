@@ -192,6 +192,11 @@ Module Plang.
 
   Definition ioSpec := (list (ioTag * val * val)) → Prop.
 
+  Global Instance ioSpec_inh : Inhabited ioSpec.
+  Proof.
+    exact {|inhabitant := λ _, False |}.
+  Qed.
+
   Record state : Type :=
     { Heap : gmap loc val;
       Proph : gmap loc (Stream val);
@@ -279,7 +284,7 @@ Module Plang.
       (Proph σ) !! l = Some p → to_val e = Some w → w ≠ Shead p →
       head_step (Assign_Pr (Pr l) e) σ (Assign_Pr (Pr l) e) σ []
   | RandS b σ : head_step Rand σ (Bool b) σ []
-  | IOS t e v v' σ : to_val e = Some v → (∃ τ, (ioState σ) ((t, v, v') :: τ)) →
+  | IOS t e v v' σ : to_val e = Some v → (ioState σ) [(t, v, v')] →
                     head_step (IO t e) σ (of_val v')
                               (update_ioState σ (λ τ, (ioState σ) ((t, v, v') :: τ))) [].
 
@@ -370,6 +375,7 @@ Definition is_atomic (e : expr) : Prop :=
   | Store e1 e2 => is_Some (to_val e1) ∧ is_Some (to_val e2)
   | CAS e1 e2 e3 => is_Some (to_val e1) ∧ is_Some (to_val e2)
                    ∧ is_Some (to_val e3)
+  | IO t e => is_Some (to_val e)
   | _ => False
   end.
 Local Hint Resolve language.val_irreducible.

@@ -2,6 +2,7 @@
 prelude/base.v
 lang.v
 rules.v
+petrinet.v
 lang_erased.v
 erasure.v
 coin.v

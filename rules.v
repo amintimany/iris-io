@@ -370,16 +370,17 @@ Section lang_rules.
     PureExec True (BinOp op (#n a) (#n b)) (of_val (binop_eval op a b)).
   Proof. solve_pure_exec. Qed.
 
-  Lemma wp_io E T t e v v' :
+  Lemma wp_io E (T : ioSpec) t e v v' :
     IntoVal e v →
-    {{{ ownIO T ∗ ⌜T [(t, v, v')]⌝ }}}
+    T [(t, v, v')] →
+    {{{ ▷ ownIO T }}}
     IO t e @ E
-    {{{ w, RET w; ownIO (λ τ, T ((t, v, w) :: τ))}}}.
+    {{{ w, RET w; ownIO (λ τ, T ((t, v, w) :: τ)) ∗ ⌜T [(t, v, w)]⌝ }}}.
   Proof.
-    iIntros (<-%of_to_val Φ) "[HoT Hio] HΦ"; iDestruct "Hio" as %Hio.
+    iIntros (<-%of_to_val Hio Φ) "HoT HΦ".
     iApply wp_lift_atomic_head_step_no_fork; simpl; auto.
     iIntros (σ1) "(Hh & Hp & Hi)".
-    iDestruct (own_valid_2 with "Hi HoT") as "#Hvl".
+    iDestruct (own_valid_2 with "Hi HoT") as "#>Hvl".
     iDestruct "Hvl" as %Hvl%auth_valid_discrete_2;
       destruct Hvl as [Hvl%Excl_included%leibniz_equiv _];
       subst.
@@ -402,7 +403,7 @@ Section lang_rules.
     iDestruct "HIO" as "[Hio HoT]".
     iModIntro; iFrame; iSplit; first done.
     rewrite to_of_val; simpl.
-    by iApply "HΦ".
+    iApply "HΦ"; iSplit; auto.
   Qed.
 
 End lang_rules.
