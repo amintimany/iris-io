@@ -26,24 +26,26 @@ Section coin.
   Context `{heapIG Σ}.
 
   Definition make_coin :=
-    Rec (Pair (Alloc (InjR Plang.Unit)) Create_Pr).
+    Lam (Pair (Alloc (InjR Plang.Unit)) Create_Pr).
 
   Definition flip :=
-    Rec (Rec ((Store (Var 3) (InjR Plang.Unit)))).
+    Lam (Lam ((Store (Var 1) (InjR Plang.Unit)))).
 
   Definition read :=
-    Rec
-      (Rec
+    Lam
+      (Lam
          (Case
-            (Load (Var 3))
+            (Load (Var 1))
             (Var 0)
-            (App
-               (Rec
-                  (App
-                     (Rec (App (Rec (Var 5)) (Assign_Pr (Var 6) (Var 3))))
-                     (Store (Var 6) (InjL (Var 1))))
+            (LetIn
+               Rand
+               (Seq
+                  (Store (Var 3) (InjL (Var 0)))
+                  (Seq (Assign_Pr (Var 2) (Var 0)) (Var 0))
                )
-               Rand))).
+            )
+         )
+      ).
 
   Definition Coin (b : bool) (c l : loc) : iProp Σ :=
     (∃ p, cpvar l coin_proph p ∗
@@ -113,13 +115,13 @@ Section coin.
       iApply (wp_bind (fill [CaseCtx _ _])).
       iApply (wp_load with "[$Hc]"). iNext. iIntros "Hc". simpl.
       iApply wp_pure_step_later; auto; iNext. asimpl.
-      iApply (wp_bind (fill [AppRCtx (RecV _)])).
+      iApply (wp_bind (fill [LetInCtx _])).
       iApply wp_rand. iNext. iIntros (r) "!> /=".
       iApply wp_pure_step_later; auto; iNext. asimpl.
-      iApply (wp_bind (fill [AppRCtx (RecV _)])).
+      iApply (wp_bind (fill [SeqCtx _])).
       iApply (wp_store with "[$Hc]"). iNext. iIntros "Hc". simpl.
       iApply wp_pure_step_later; auto; iNext. asimpl.
-      iApply (wp_bind (fill [AppRCtx (RecV _)])).
+      iApply (wp_bind (fill [SeqCtx _])).
       iApply (wp_assign_pr with "[$Hl]").
       { iExists (Sconst (#♭v r)). iPureIntro.
         intros n; exists r. destruct n; first done. apply (Snth_Sconst (S n)). }
