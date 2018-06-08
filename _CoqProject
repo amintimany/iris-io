@@ -6,3 +6,4 @@ petrinet.v
 lang_erased.v
 erasure.v
 coin.v
+channel.v

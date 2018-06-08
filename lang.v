@@ -71,7 +71,7 @@ Module Plang.
   Notation "#♭ b" := (Bool b) (at level 20).
   Notation "#n n" := (Nat n) (at level 20).
 
-  Instance expr_dec_eq (e e' : expr) : Decision (e = e').
+  Global Instance expr_dec_eq : EqDecision expr.
   Proof. solve_decision. Defined.
 
   Inductive val :=
@@ -101,7 +101,7 @@ Module Plang.
     | Lt => λ a b, if (lt_dec a b) then #♭v true else #♭v false
     end.
 
-  Instance val_dec_eq (v v' : val) : Decision (v = v').
+  Global Instance val_dec_eq : EqDecision val.
   Proof. solve_decision. Defined.
 
   Instance val_inh : Inhabited val := populate UnitV.

@@ -1,6 +1,12 @@
 From iris.algebra Require Export base.
 From Autosubst Require Export Autosubst.
 
+Global Instance Prop_inh : Inhabited Prop.
+Proof. exact {| inhabitant := False |}. Qed.
+
+Global Instance fun_inh `{∀ x : A, Inhabited (B x)} : Inhabited (∀ x, B x).
+Proof. exact {| inhabitant := (λ x, inhabitant) |}. Qed.
+
 CoInductive Stream (A : Type) : Type :=
   { Shead : A; Stail : Stream A }.
 
@@ -11,6 +17,9 @@ Lemma Stream_unfold {A} (p : Stream A) : p = {|Shead := Shead p; Stail := Stail 
 Proof. by destruct p. Qed.
 
 CoFixpoint Sconst {A : Type} (a : A) := {| Shead := a; Stail := Sconst a |}.
+
+Global Instance Stream_inh `{Inhabited A} : Inhabited (Stream A).
+Proof. exact {| inhabitant := Sconst inhabitant |}. Qed.
 
 CoInductive Seq {A : Type} : Stream A → Stream A → Prop :=
   Seq_refl : forall x y t1 t2,
