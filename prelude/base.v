@@ -78,3 +78,32 @@ Proof.
   destruct μ as [h t]; simpl.
   by rewrite IHn.
 Qed.
+
+CoInductive interleaving {A} : Stream A → Stream A → Stream A → Prop :=
+  interL v μ1 μ2 μ : interleaving μ1 μ2 μ →
+                     interleaving {|Shead := v; Stail := μ1 |} μ2
+                                  {|Shead := v; Stail := μ |}
+| interR v μ1 μ2 μ : interleaving μ1 μ2 μ →
+                     interleaving μ1 {|Shead := v; Stail := μ2 |}
+                                  {|Shead := v; Stail := μ |}.
+
+Lemma interleaving_inh {A} (μ1 μ2 : Stream A) : (interleaving μ1 μ2) μ1.
+Proof.
+  revert μ1 μ2.
+  cofix.
+  destruct μ1.
+  by constructor.
+Qed.
+
+Fixpoint append_l_s {A} (l : list A) (s : Stream A) :=
+  match l with
+  | [] => s
+  | a :: l' => {|Shead := a; Stail := append_l_s l' s |}
+  end.
+
+Lemma append_l_s_app {A} (vs : list A) v μ :
+  append_l_s (vs ++ [v]) μ = append_l_s vs {| Shead := v; Stail := μ |}.
+Proof.
+  induction vs; simpl; first done.
+  by rewrite IHvs.
+Qed.

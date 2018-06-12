@@ -1,7 +1,6 @@
 From iris.program_logic Require Export language ectx_language ectxi_language.
 From iris_io.prelude Require Export base.
-From iris_io Require Export lang lang_erased.
-From iris.algebra Require Export ofe.
+From iris_io Require Export lang lang_proph_erased.
 From stdpp Require Import gmap.
 
 Definition have_same_proph
@@ -26,28 +25,28 @@ Proof.
   - apply elem_of_dom. rewrite lookup_to_gmap option_guard_True; eauto.
 Qed.
 
-Lemma erased_reachable_reachable th1 h1 th2 σ2:
-  rtc (@step PE_lang) (th1, {| EHeap := h1; EProph := ∅; EioState := (λ _, False) |})
+Lemma erased_reachable_reachable th1 h1 th2 σ2 M:
+  rtc (@step PE_lang) (th1, {| EHeap := h1; EProph := ∅; EioState := M |})
 (th2, σ2) →
   ∀ σ2', have_same_proph σ2' σ2 →
          rtc (@step P_lang)
-             (th1, {| Heap := h1; Proph := ∅; ioState := (λ _, False) |})
+             (th1, {| Heap := h1; Proph := ∅; ioState := M |})
              (th2, σ2').
 Proof.
-  remember (th1, {| EHeap := h1; EProph := ∅; EioState := (λ _, False) |}) as cfg.
+  remember (th1, {| EHeap := h1; EProph := ∅; EioState := M |}) as cfg.
   remember (th2, σ2) as cfg'.
   intros Hrtc.
   revert th1 h1 th2 σ2 Heqcfg Heqcfg'.
   eapply (rtc_ind_r_weak (λ z z', ∀ (th1 : list (language.expr PE_lang)) (h1 : gmap loc val)
                                     (th2 : list (language.expr PE_lang))
                                     (σ2 : language.state PE_lang),
-                             z = (th1, {| EHeap := h1; EProph := ∅; EioState := (λ _, False) |})
+                             z = (th1, {| EHeap := h1; EProph := ∅; EioState := M |})
                              → z' = (th2, σ2) →
                              ∀ σ2' : language.state P_lang,
                                have_same_proph σ2' σ2 →
                                rtc (@step P_lang)
                                    (th1, {| Heap := h1; Proph := ∅;
-                                            ioState := (λ _, False) |}) (th2, σ2')));
+                                            ioState := M |}) (th2, σ2')));
   last eauto.
   - intros x th1 h1 th2 σ2 Heqcfg Heqcfg'; simplify_eq.
     intros [σ2 σ2p σ2i] [Hh [Hsp Hi]]; simpl in *; simplify_eq.
@@ -104,15 +103,15 @@ Proof.
         rewrite lookup_insert //.
 Qed.
 
-Definition safe e :=
+Definition safe e M :=
   ∀ th2 σ2,
-    rtc (@step P_lang) ([e], {| Heap := ∅; Proph := ∅; ioState := (λ _, False) |})
+    rtc (@step P_lang) ([e], {| Heap := ∅; Proph := ∅; ioState := M |})
         (th2, σ2) →
     ∀ e, e ∈ th2 → AsVal e ∨ reducible e σ2.
 
-Definition erased_safe e :=
+Definition erased_safe e M :=
   ∀ th2 σ2,
-    rtc (@step PE_lang) ([e], {| EHeap := ∅; EProph := ∅; EioState := (λ _, False) |})
+    rtc (@step PE_lang) ([e], {| EHeap := ∅; EProph := ∅; EioState := M |})
         (th2, σ2) →
     ∀ e, e ∈ th2 → AsVal e ∨ reducible e σ2.
 
@@ -136,11 +135,11 @@ Proof.
   - by unshelve (repeat econstructor).
 Qed.
 
-Lemma soundness_prophecies e :
-  safe e → erased_safe e.
+Lemma soundness_prophecies e M :
+  safe e M → erased_safe e M.
 Proof.
   intros Hs th2 σ2 Hrtc re Hre.
-  assert (rtc step ([e], {| Heap := ∅; Proph := ∅; ioState := (λ _, False) |})
+  assert (rtc step ([e], {| Heap := ∅; Proph := ∅; ioState := M |})
               (th2, conjure_prophecies σ2)) as Hrtc'.
   { eapply erased_reachable_reachable;
       eauto using conjure_prophecies_have_same_proph. }

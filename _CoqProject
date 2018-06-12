@@ -3,7 +3,9 @@ prelude/base.v
 lang.v
 rules.v
 petrinet.v
-lang_erased.v
-erasure.v
+lang_proph_erased.v
+proph_erasure.v
+lang_fully_erased.v
+full_erasure.v
 coin.v
 channel.v
