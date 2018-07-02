@@ -119,7 +119,7 @@ Proof.
       end.
 Qed.
 
-Lemma soundness_prophecies e M :
+Lemma soundness_io e M :
   prefix_closed M → erased_safe e M → fully_erased_safe e M.
 Proof.
   intros Hpc Hs th2 σ2 HMσ2 Hrtc re Hre.

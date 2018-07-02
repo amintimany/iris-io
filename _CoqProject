@@ -7,5 +7,7 @@ lang_proph_erased.v
 proph_erasure.v
 lang_fully_erased.v
 full_erasure.v
+adequacy.v
 coin.v
 channel.v
+chat_server.v

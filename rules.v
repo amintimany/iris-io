@@ -7,7 +7,7 @@ From iris.proofmode Require Import tactics.
 From iris.base_logic Require Export gen_heap.
 Import uPred.
 
-Definition io_monoid := (authR (optionUR (exclR (leibnizC ioSpec)))).
+Definition io_monoid := authR (optionUR (exclR (leibnizC ioSpec))).
 
 (** The CMRA for the heap of the implementation. This is linked to the
     physical heap. *)
@@ -19,11 +19,14 @@ Class heapIG Σ := HeapIG {
   γio : gname
 }.
 
+Program Definition heapIG_stateI `{heapIG Σ} σ :=
+  ((gen_heap_ctx (Heap σ))
+     ∗ (gen_heap_ctx (Proph σ))
+     ∗ @own _ io_monoid _ γio (● Excl' (ioState σ)))%I.
+
 Program Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
   iris_invG := heapI_invG;
-  state_interp := λ σ, ((gen_heap_ctx (Heap σ))
-                          ∗ (gen_heap_ctx (Proph σ))
-                          ∗ @own _ io_monoid _ γio (● Some (Excl (ioState σ))) )%I
+  state_interp := heapIG_stateI
 }.
 Global Opaque iris_invG.
 

@@ -136,3 +136,4 @@ Section coin.
   Qed.
 
 End coin.
+

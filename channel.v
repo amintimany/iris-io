@@ -7,7 +7,7 @@ From iris Require Import proofmode.tactics.
 From iris.program_logic Require Import weakestpre lifting.
 From iris.algebra Require Import agree frac.
 
-Class ChannelIG Σ := channelIG {
+Class channelIG Σ := ChannelIG {
    stream_inG :> inG Σ (prodR (fracR) (agreeR (leibnizC (Stream val))));
    streams_inG :> inG Σ (prodR (fracR) (agreeR (leibnizC ((Stream val) → Prop))))
 }.
@@ -29,7 +29,7 @@ Qed.
 
 Section channels.
 
-  Context `{!ChannelIG Σ, !heapIG Σ}.
+  Context `{!channelIG Σ, !heapIG Σ}.
 
   Definition own_stream γ q μ :=
     own γ (q, to_agree μ : (agreeR (leibnizC (Stream val)))).
@@ -113,6 +113,12 @@ Section channels.
             )
          )
       ).
+
+  Lemma append_closed f : append.[f] = append.
+  Proof. by asimpl. Qed.
+
+  Hint Rewrite append_closed : autosubst.
+
   Lemma append_eq :
     append = Rec
       (Lam
@@ -154,9 +160,8 @@ Section channels.
       iApply (wp_bind (fill [PairRCtx _])).
       rewrite append_eq.
       iApply (wp_bind (fill [AppRCtx (RecV _); AppLCtx _])).
-      rewrite /= -append_eq.
       iApply wp_pure_step_later; auto.
-      iNext; iApply wp_value.
+      iNext; iApply wp_value; simpl.
       iApply wp_wand_r; iSplitR.
       { iApply ("IH" $! (λ s, ⌜s = of_list (l ++ l')⌝))%I. iNext.
         by iIntros (w Hw); subst w. }
@@ -184,6 +189,11 @@ Section channels.
             )
          )
       ).
+
+  Lemma send_closed f : send.[f] = send.
+  Proof. by asimpl. Qed.
+
+  Hint Rewrite send_closed : autosubst.
 
   Lemma wp_send chan v μ :
     {{{sender chan {| Shead := v; Stail := μ|} }}}
@@ -279,6 +289,9 @@ Section channels.
       iNext. by iApply ("IH" with "Hγs").
   Qed.
 
+  Typeclasses Opaque send.
+  Global Opaque send.
+
   Definition receive :=
     Lam
       (LetIn
@@ -310,6 +323,11 @@ Section channels.
             )
          )
       ).
+
+  Lemma receive_closed f : receive.[f] = receive.
+  Proof. by asimpl. Qed.
+
+  Hint Rewrite receive_closed : autosubst.
 
   Lemma wp_receive chan v μ :
     {{{receiver chan {| Shead := v; Stail := μ|} }}}
@@ -400,4 +418,12 @@ Section channels.
       iNext. by iApply ("IH" with "HR Hpr").
   Qed.
 
+  Typeclasses Opaque receive.
+  Global Opaque receive.
+
 End channels.
+
+
+Hint Rewrite append_closed : autosubst.
+Hint Rewrite send_closed : autosubst.
+Hint Rewrite receive_closed : autosubst.
