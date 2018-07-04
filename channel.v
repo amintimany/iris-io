@@ -12,6 +12,13 @@ Class channelIG Σ := ChannelIG {
    streams_inG :> inG Σ (prodR (fracR) (agreeR (leibnizC ((Stream val) → Prop))))
 }.
 
+Definition channelΣ :=
+  #[GFunctor (prodR (fracR) (agreeR (leibnizC (Stream val))));
+      GFunctor (prodR (fracR) (agreeR (leibnizC ((Stream val) → Prop))))].
+
+Global Instance subG_channelΣ Σ : subG channelΣ Σ → channelIG Σ.
+Proof. solve_inG. Qed.
+
 Fixpoint of_list (l : list val) :=
   match l with
     [] => InjLV Plang.UnitV
@@ -259,7 +266,7 @@ Section channels.
           { iExists _, _, _, _, _, _; iNext; iFrame.
             iSplit; first by eauto.
             iPureIntro. intros; rewrite append_l_s_app.
-            apply Hintr; by econstructor. }
+            apply Hintr; by apply interR. }
         - iDestruct (own_valid_2 with "Hγs Hγs2") as %[_ ?%agree_op_invL'];
           simpl in *; simplify_eq.
           iCombine "Hγs" "Hγs2" as "Hγs".
@@ -270,7 +277,7 @@ Section channels.
           { iExists _, _, _, _, _, _; iNext; iFrame.
             iSplit; first by eauto.
             iPureIntro. intros; rewrite append_l_s_app.
-            apply Hintr; by econstructor. }
+            apply Hintr; by apply interL. }
       }
       iMod "Hcl" as "Hγs".
       iModIntro.

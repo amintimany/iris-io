@@ -33,7 +33,7 @@ Proof.
   econstructor; auto.
 Qed.
 
-(* Axiom Seq_eq : ∀ {A : Type} (x y : Stream A), Seq x y → x = y. *)
+Axiom Seq_eq : ∀ {A : Type} (x y : Stream A), Seq x y → x = y.
 
 Fixpoint Stake {A : Type} n (s : Stream A) : list A :=
   match n with
@@ -41,11 +41,21 @@ Fixpoint Stake {A : Type} n (s : Stream A) : list A :=
   | S n' => (Shead s) :: (Stake n' (Stail s))
   end.
 
+Definition Sdrop {A : Type} n (s : Stream A) : Stream A :=
+  Nat.iter n Stail s.
+
 Fixpoint Snth {A : Type} n (s : Stream A) : A :=
   match n with
   | O => Shead s
   | S n' => Snth n' (Stail s)
   end.
+
+Lemma Snth_Sdrop {A : Type} n (s : Stream A) :
+    Shead (Sdrop n s) = Snth n s.
+Proof.
+  revert s; induction n => s; simpl; first done.
+  by rewrite -IHn /Sdrop -Nat_iter_S_r.
+ Qed.
 
 Lemma Snth_Sconst {A : Type} n (a : A) :
   Snth n (Sconst a) = a.
@@ -79,22 +89,6 @@ Proof.
   by rewrite IHn.
 Qed.
 
-CoInductive interleaving {A} : Stream A → Stream A → Stream A → Prop :=
-  interL v μ1 μ2 μ : interleaving μ1 μ2 μ →
-                     interleaving {|Shead := v; Stail := μ1 |} μ2
-                                  {|Shead := v; Stail := μ |}
-| interR v μ1 μ2 μ : interleaving μ1 μ2 μ →
-                     interleaving μ1 {|Shead := v; Stail := μ2 |}
-                                  {|Shead := v; Stail := μ |}.
-
-Lemma interleaving_inh {A} (μ1 μ2 : Stream A) : (interleaving μ1 μ2) μ1.
-Proof.
-  revert μ1 μ2.
-  cofix.
-  destruct μ1.
-  by constructor.
-Qed.
-
 Fixpoint append_l_s {A} (l : list A) (s : Stream A) :=
   match l with
   | [] => s
@@ -106,4 +100,78 @@ Lemma append_l_s_app {A} (vs : list A) v μ :
 Proof.
   induction vs; simpl; first done.
   by rewrite IHvs.
+Qed.
+
+CoFixpoint Smap {A B} (f : A → B) (μ : Stream A) : Stream B :=
+  {|
+    Shead := f (Shead μ);
+    Stail := Smap f (Stail μ)
+  |}.
+
+CoFixpoint Smix {A} (mixer : Stream bool) (μ μ' : Stream A) : Stream A :=
+  {|
+    Shead := if Shead mixer then Shead μ else Shead μ';
+    Stail := Smix (Stail mixer)
+                    (if Shead mixer then Stail μ else μ)
+                    (if Shead mixer then μ' else Stail μ')
+  |}.
+
+Lemma Smix_trues {A} (μ1 μ2 : Stream A) : Smix (Sconst true) μ1 μ2 = μ1.
+Proof.
+  apply Seq_eq.
+  revert μ1 μ2; cofix => μ1 μ2.
+  rewrite [Smix _ _ _]Stream_unfold.
+  destruct μ1; simpl; constructor; eauto.
+Qed.
+
+Lemma Smix_falses {A} (μ1 μ2 : Stream A) : Smix (Sconst false) μ1 μ2 = μ2.
+Proof.
+  apply Seq_eq.
+  revert μ1 μ2; cofix => μ1 μ2.
+  rewrite [Smix _ _ _]Stream_unfold.
+  destruct μ2; simpl; constructor; eauto.
+Qed.
+
+Definition interleaving {A} (μ1 μ2 : Stream A) : Stream A → Prop :=
+  λ μ, ∃ mixer, Smix mixer μ1 μ2 = μ.
+
+Lemma interR {A} v (μ1 μ2 μ : Stream A) :
+  interleaving μ1 μ2 μ →
+  interleaving {|Shead := v; Stail := μ1 |} μ2
+               {|Shead := v; Stail := μ |}.
+Proof.
+  intros [mixer <-].
+  exists {| Shead := true ; Stail := mixer |}.
+  by rewrite [Smix {| Shead := true |} _ _]Stream_unfold /=.
+Qed.
+
+Lemma interL {A} v (μ1 μ2 μ : Stream A) :
+  interleaving μ1 μ2 μ →
+  interleaving μ1 {|Shead := v; Stail := μ2 |}
+               {|Shead := v; Stail := μ |}.
+Proof.
+  intros [mixer <-].
+  exists {| Shead := false ; Stail := mixer |}.
+  by rewrite [Smix {| Shead := false |} _ _]Stream_unfold /=.
+Qed.
+
+Lemma interleaving_inh {A} (μ1 μ2 : Stream A) : (interleaving μ1 μ2) μ1.
+Proof.
+  exists (Sconst true); apply Smix_trues.
+Qed.
+
+Lemma Smix_Smap {A B} mixer (f : A → B) (μ μ' : Stream A) :
+  Smap f (Smix mixer μ μ') = Smix mixer (Smap f μ) (Smap f μ').
+Proof.
+  apply Seq_eq.
+  revert mixer μ μ'; cofix => mixer μ μ'.
+  destruct mixer as [[] mixer].
+  - destruct μ as [x μ].
+    do 2 rewrite [Smix {| Shead := true |} _ _]Stream_unfold /=.
+    rewrite [Smap _ _]Stream_unfold; simpl.
+    constructor; auto.
+  - destruct μ' as [x μ'].
+    do 2 rewrite [Smix {| Shead := false |} _ _]Stream_unfold /=.
+    rewrite [Smap _ _]Stream_unfold; simpl.
+    constructor; auto.
 Qed.

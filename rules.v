@@ -5,6 +5,7 @@ From iris.algebra Require Import auth frac agree gmap.
 From iris_io Require Export lang.
 From iris.proofmode Require Import tactics.
 From iris.base_logic Require Export gen_heap.
+From Coq.Logic Require Import Classical.
 Import uPred.
 
 Definition io_monoid := authR (optionUR (exclR (leibnizC ioSpec))).
@@ -19,10 +20,10 @@ Class heapIG Σ := HeapIG {
   γio : gname
 }.
 
-Program Definition heapIG_stateI `{heapIG Σ} σ :=
-  ((gen_heap_ctx (Heap σ))
-     ∗ (gen_heap_ctx (Proph σ))
-     ∗ @own _ io_monoid _ γio (● Excl' (ioState σ)))%I.
+Definition FullIO `{heapIG Σ} M := @own _ io_monoid _ γio (● Excl' M).
+
+Definition heapIG_stateI `{heapIG Σ} σ :=
+  ((gen_heap_ctx (Heap σ)) ∗ (gen_heap_ctx (Proph σ)) ∗ FullIO (ioState σ))%I.
 
 Program Instance heapIG_irisG `{heapIG Σ} : irisG P_lang Σ := {
   iris_invG := heapI_invG;
@@ -389,7 +390,7 @@ Section lang_rules.
     IntoVal e v →
     T [(t, v, v')] →
     {{{ ▷ ownIO T }}}
-    IO t e @ E
+    IO (IOtag t) e @ E
     {{{ w, RET w; ownIO (λ τ, T ((t, v, w) :: τ)) ∗ ⌜T [(t, v, w)]⌝ }}}.
   Proof.
     iIntros (<-%of_to_val Hio Φ) "HoT HΦ".

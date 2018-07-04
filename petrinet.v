@@ -7,7 +7,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 
 Section PetriNet.
 
-  Class PlacesC := places
+  Class PlacesC := placesC
       { Places : Type;
         ThePlaces_eqdec :> EqDecision Places;
       }.
@@ -29,6 +29,13 @@ Section PetriNet.
     ThePetriNet : PetriNet
   }.
 
+  Definition petrinetΣ := #[GFunctor (authUR (ofe_funUR (λ p : Places, natUR)))].
+
+  Global Instance subG_petrinetΣ Σ :
+    subG petrinetΣ Σ →
+    inG Σ (authUR (ofe_funUR (λ p : Places, natUR))).
+  Proof. solve_inG. Qed.
+
   Implicit Types N : PetriNet.
   Implicit Types p q : Places.
 
@@ -43,6 +50,11 @@ Section PetriNet.
   Global Instance : Comm eq ValPlus.
   Proof.
     intros x y. extensionality u; unfold ValPlus; omega.
+  Qed.
+
+  Global Instance : Assoc eq ValPlus.
+  Proof.
+    intros x y z. extensionality u; unfold ValPlus; omega.
   Qed.
 
   Notation "V ⊎ W" := (ValPlus V W) (at level 50, left associativity).
@@ -150,10 +162,67 @@ Section PetriNet.
     by iFrame.
   Qed.
 
+  Lemma petrinet_split p q1 q2 :
+    ThePetriNet (SplitTr p q1 q2) → Token p ={⊤}=∗ Token q1 ∗ Token q2.
+  Proof.
+    iIntros (Hsp) "[Htk #Hinv]".
+    iInv PetriNetN as ">Hpt" "Hcl".
+    iDestruct "Hpt" as (V T) "(HT & HV & Hinc & Hrd)".
+    iDestruct "Hinc" as %Hinc. iDestruct "Hrd" as %Hrd.
+    iDestruct (ownVAL_Full with "Htk HV") as %[V'' ?]; subst.
+    rewrite (comm _ _ V'').
+    iMod (PetriNet_delete with "HV Htk") as "HV".
+    iMod (PetriNet_alloc _ (singVAL q1) with "HV") as "[HV Hq1]".
+    iMod (PetriNet_alloc _ (singVAL q2) with "HV") as "[HV Hq2]".
+    iMod ("Hcl" with "[HT HV]") as "_".
+    { iNext. iExists _, _; iFrame. iSplit; iPureIntro; auto.
+      rewrite -assoc (comm _ V'').
+      intros τ Hτ. apply Hinc. eapply SplitTR; eauto. }
+    by iFrame; iFrame "#".
+  Qed.
+
+  Lemma petrinet_join p1 p2 q :
+    ThePetriNet (JoinTr p1 p2 q) → Token p1 ∗ Token p2 ={⊤}=∗ Token q.
+  Proof.
+    iIntros (Hjn) "[[Hp1 #Hinv] [Hp2 _]]".
+    iInv PetriNetN as ">Hpt" "Hcl".
+    iDestruct "Hpt" as (V T) "(HT & HV & Hinc & Hrd)".
+    iDestruct "Hinc" as %Hinc. iDestruct "Hrd" as %Hrd.
+    iDestruct (ownVAL_Full with "Hp1 HV") as %[V'' ?]; subst.
+    rewrite (comm _ _ V'').
+    iMod (PetriNet_delete with "HV Hp1") as "HV".
+    iDestruct (ownVAL_Full with "Hp2 HV") as %[V3 ?]; subst.
+    rewrite (comm _ _ V3).
+    iMod (PetriNet_delete with "HV Hp2") as "HV".
+    iMod (PetriNet_alloc _ (singVAL q) with "HV") as "[HV Hq]".
+    iMod ("Hcl" with "[HT HV]") as "_".
+    { iNext. iExists _, _; iFrame. iSplit; iPureIntro; auto.
+      rewrite comm.
+      intros τ Hτ. apply Hinc. rewrite assoc. eapply JoinTR; eauto. }
+    by iFrame; iFrame "#".
+  Qed.
+
+  Lemma petrinet_noop p q : ThePetriNet (NoOpTr p q) → Token p ={⊤}=∗ Token q.
+  Proof.
+    iIntros (Hjn) "[Hp1 #Hinv]".
+    iInv PetriNetN as ">Hpt" "Hcl".
+    iDestruct "Hpt" as (V T) "(HT & HV & Hinc & Hrd)".
+    iDestruct "Hinc" as %Hinc. iDestruct "Hrd" as %Hrd.
+    iDestruct (ownVAL_Full with "Hp1 HV") as %[V'' ?]; subst.
+    rewrite (comm _ _ V'').
+    iMod (PetriNet_delete with "HV Hp1") as "HV".
+    iMod (PetriNet_alloc _ (singVAL q) with "HV") as "[HV Hq]".
+    iMod ("Hcl" with "[HT HV]") as "_".
+    { iNext. iExists _, _; iFrame. iSplit; iPureIntro; auto.
+      rewrite comm.
+      intros τ Hτ. apply Hinc. eapply NoOpTR; eauto. }
+    by iFrame; iFrame "#".
+  Qed.
+
   Lemma wp_petrinet_io t e v p v' q :
     IntoVal e v →
     ThePetriNet (IOTr p t v v' q) →
-    {{{Token p}}} IO t e {{{RET v'; Token q}}}.
+    {{{Token p}}} IO (IOtag t) e {{{RET v'; Token q}}}.
   Proof.
     iIntros (<-%of_to_val HIO Φ) "[Htk #Hinv] HΦ".
     iApply wp_atomic.
@@ -193,25 +262,27 @@ Section PetriNetInv.
 
   Context `{heapIG Σ, PlacesC}.
 
-  Lemma PetriNetInv_alloc (N : PetriNet) E (V : (ofe_funUR (λ p, natUR))) :
-    inG Σ (authUR (ofe_funUR (λ p : Places, natUR))) →
+  Lemma PetriNetInv_alloc
+        `{inG Σ (authUR (ofe_funUR (λ p : Places, natUR)))} (N : PetriNet)
+        E (V : (ofe_funUR (λ p, natUR))) :
     ResultDet (Traces N V) →
     ownIO (Traces N V) ⊢
-          |={E}=> ∃ `{PIG : !petrinetIG Σ}, PetriNetInv ∗ ownVAL V.
+          |={E}=> ∃ γpn, let _ := {| γPN := γpn; ThePetriNet := N |} in
+                        PetriNetInv ∗ ownVAL V.
   Proof.
-    iIntros (Hing Hrd) "HIO".
+    iIntros (Hrd) "HIO".
     iMod (@own_alloc Σ (authUR (ofe_funUR (λ p, natUR))) _ ((◯ V) ⋅ (● V)))
       as (γpn) "[Hofrag Hofull]".
     { rewrite auth_valid_eq; simpl; split; last done.
         by intros; rewrite right_id. }
-    set (HIG := {| PNI_exclG := Hing; γPN := γpn; ThePetriNet := N|}).
+    set (HIG := {| PNI_exclG := _; γPN := γpn; ThePetriNet := N|}).
     iMod (inv_alloc
             PetriNetN _
             (∃ V T, ownIO T ∗ FullVAL V ∗
                           ⌜∀ τ, Traces N V τ → T τ⌝ ∗ ⌜ResultDet T⌝)%I
             with "[Hofull HIO]") as "Hinv".
     { iNext; iExists _, _; iFrame; iSplit; iPureIntro; auto. }
-    iModIntro; iExists _; iFrame.
+    iModIntro. iExists _; iFrame.
   Qed.
 
 End PetriNetInv.

@@ -2,7 +2,7 @@ From iris.program_logic Require Export language ectx_language ectxi_language.
 From iris_io.prelude Require Export base.
 From iris.algebra Require Export ofe.
 From stdpp Require Import gmap.
-Require Export Coq.Logic.Classical_Prop.
+From Coq.Logic Require Export FunctionalExtensionality PropExtensionality.
 
 Module Plang.
   Definition loc := positive.
@@ -48,6 +48,7 @@ Module Plang.
   | Fork (e : expr)
   (* Reference Types *)
   | Loc (l : loc)
+  | IOtag (t : ioTag)
   | Alloc (e : expr)
   | Load (e : expr)
   | Store (e1 : expr) (e2 : expr)
@@ -60,7 +61,7 @@ Module Plang.
   (* Random bit *)
   | Rand
   (* I/O *)
-  | IO (t : ioTag) (e : expr).
+  | IO (e1 e2 : expr).
 
   Instance Ids_expr : Ids expr. derive. Defined.
   Instance Rename_expr : Rename expr. derive. Defined.
@@ -86,6 +87,7 @@ Module Plang.
   | InjRV (v : val)
   | FoldV (v : val)
   | LocV (l : loc)
+  | IOtagV (t : ioTag)
   | PrV (l : loc).
 
   (* Notation for bool and nat *)
@@ -119,6 +121,7 @@ Module Plang.
     | InjRV v => InjR (of_val v)
     | FoldV v => Fold (of_val v)
     | LocV l => Loc l
+    | IOtagV t => IOtag t
     | PrV l => Pr l
     end.
 
@@ -136,6 +139,7 @@ Module Plang.
     | Fold e => v ← to_val e; Some (FoldV v)
     | Loc l => Some (LocV l)
     | Pr l => Some (PrV l)
+    | IOtag t => Some (IOtagV t)
     | _ => None
     end.
 
@@ -167,7 +171,8 @@ Module Plang.
   | CasRCtx (v0 : val) (v1 : val)
   | Assign_PrLCtx (e2 : expr)
   | Assign_PrRCtx (v1 : val)
-  | IOCtx (t : ioTag).
+  | IOLCtx (e2 : expr)
+  | IORCtx (v1 : val).
 
   Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
     match Ki with
@@ -197,10 +202,28 @@ Module Plang.
     | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
     | Assign_PrLCtx e2 => Assign_Pr e e2
     | Assign_PrRCtx v1 => Assign_Pr (of_val v1) e
-    | IOCtx t => IO t e
+    | IOLCtx e2 => IO e e2
+    | IORCtx v1 => IO (of_val v1) e
     end.
 
   Definition ioSpec := (list (ioTag * val * val)) → Prop.
+
+  Global Instance ioSpec_equiv : Equiv ioSpec :=
+    λ M M', ∀ T, M T ↔ M' T.
+
+  Global Instance ioSpec_LeibnizEquiv : LeibnizEquiv ioSpec.
+  Proof.
+    intros M M' HMM. extensionality z.
+    by apply propositional_extensionality.
+  Qed.
+
+  Global Instance Equivalence_ioSpec_equiv : Equivalence ioSpec_equiv.
+  Proof.
+    split.
+    - intros x; cbv in *; auto.
+    - intros x y Hxy T; specialize (Hxy T); intuition.
+    - intros x y z Hxy Hyz T; specialize (Hxy T); specialize (Hyz T); intuition.
+  Qed.
 
   Global Instance ioSpec_inh : Inhabited ioSpec.
   Proof.
@@ -304,7 +327,7 @@ Module Plang.
       head_step (Assign_Pr (Pr l) e) σ (Assign_Pr (Pr l) e) σ []
   | RandS b σ : head_step Rand σ (Bool b) σ []
   | IOS t e v v' σ : to_val e = Some v → (ioState σ) [(t, v, v')] →
-                    head_step (IO t e) σ (of_val v')
+                    head_step (IO (IOtag t) e) σ (of_val v')
                               (update_ioState σ (λ τ, (ioState σ) ((t, v, v') :: τ))) [].
 
   (** Basic properties about the language *)
@@ -394,7 +417,7 @@ Definition is_atomic (e : expr) : Prop :=
   | Store e1 e2 => is_Some (to_val e1) ∧ is_Some (to_val e2)
   | CAS e1 e2 e3 => is_Some (to_val e1) ∧ is_Some (to_val e2)
                    ∧ is_Some (to_val e3)
-  | IO t e => is_Some (to_val e)
+  | IO e1 e2 => is_Some (to_val e1) ∧ is_Some (to_val e2)
   | _ => False
   end.
 Local Hint Resolve language.val_irreducible.

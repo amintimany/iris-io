@@ -89,6 +89,40 @@ Definition fully_erased_safe e (M : ioSpec) :=
                        ∧ ∀ t v v', FEIO σ'' = FEIO σ2 ++ [(t, v, v')] →
                                    ∃ v'', M (FEIO σ2 ++ [(t, v, v'')])).
 
+Instance fully_erased_safe_impl e :
+  Proper ((≡) ==> impl) (fully_erased_safe e).
+Proof.
+  intros M M' HMM HM th2 σ2 HM' Hrtc e' He'.
+  destruct (HM th2 σ2 (proj2 (HMM _) HM') Hrtc e' He') as
+      [| (e'' & σ'' & efs & Hstp & Hrd)];
+    first auto.
+  right. eexists _, _, _; split; eauto.
+  intros t v v' Hvv'. destruct (Hrd _ _ _ Hvv') as [v'' Hrd'].
+  eexists; eapply HMM; eauto.
+Qed.
+
+Instance fully_erased_safe_equiv e :
+  Proper ((≡) ==> iff) (fully_erased_safe e).
+Proof.
+  intros M M' HMM; split => HL.
+  - eapply fully_erased_safe_impl; eauto.
+  - symmetry in HMM. eapply fully_erased_safe_impl; eauto.
+Qed.
+
+Lemma fully_erased_safe_union e (F : ioSpec → Prop) :
+  (∀ M, F M → fully_erased_safe e M) →
+  fully_erased_safe e (λ io, ∃ M, F M ∧ M io).
+Proof.
+  intros Hfa th2 σ2 [M [HFM HMσ2]] Hrtc e' He'.
+  destruct (Hfa M HFM th2 σ2 HMσ2 Hrtc e' He') as
+      [?|(e'' & σ'' & efs & Hstp & Hrd)];
+    first auto; simpl in *.
+  right; do 3 eexists; split; eauto.
+  intros t v v' Ht.
+  destruct (Hrd t v v' Ht) as [v'' HM].
+  exists v'', M; split; auto.
+Qed.
+
 Lemma reducible_fully_erase_reducible e σ σ' M :
   IO_performed σ σ' M →
   @language.reducible PE_lang e σ →

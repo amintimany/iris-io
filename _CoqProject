@@ -2,6 +2,7 @@
 prelude/base.v
 lang.v
 rules.v
+abstract_petrinet.v
 petrinet.v
 lang_proph_erased.v
 proph_erasure.v
@@ -11,3 +12,4 @@ adequacy.v
 coin.v
 channel.v
 chat_server.v
+chat_server_concrete.v

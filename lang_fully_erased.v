@@ -96,7 +96,7 @@ Module Plang_fully_erased.
      fully_erased_head_step (Assign_Pr (Pr l) e) σ Unit σ []
   | FERandS b σ : fully_erased_head_step Rand σ (Bool b) σ []
   | FEIOS t e v v' σ : to_val e = Some v →
-                    fully_erased_head_step (IO t e) σ (of_val v')
+                    fully_erased_head_step (IO (IOtag t) e) σ (of_val v')
                               (update_FEIO σ ((FEIO σ) ++ [(t, v, v')])) [].
 
   (** Basic properties about the language *)

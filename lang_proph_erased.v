@@ -96,7 +96,7 @@ Module Plang_erased.
      erased_head_step (Assign_Pr (Pr l) e) σ Unit σ []
   | ERandS b σ : erased_head_step Rand σ (Bool b) σ []
   | EIOS t e v v' σ : to_val e = Some v → (EioState σ) [(t, v, v')] →
-                    erased_head_step (IO t e) σ (of_val v')
+                    erased_head_step (IO (IOtag t) e) σ (of_val v')
                               (update_EioState σ (λ τ, (EioState σ) ((t, v, v') :: τ))) [].
 
   (** Basic properties about the language *)

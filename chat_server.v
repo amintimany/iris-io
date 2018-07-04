@@ -1,33 +1,39 @@
 From iris.proofmode Require Import tactics.
 From iris.program_logic Require Import weakestpre lifting.
-From iris_io Require Import lang rules petrinet channel.
+From iris_io Require Import lang rules abstract_petrinet channel.
 
+
+Class abstract_nick_comm_prog :=
+  Abstract_Nick_Comm_prog {
+      send_to_nick : expr;
+      receive_from_nick : expr;
+      send_to_nick_closed : ∀ f, send_to_nick.[f] = send_to_nick;
+      receive_from_nick_closed :
+        ∀ f, receive_from_nick.[f] = receive_from_nick;
+    }.
 
 Section chat_server.
-  Context `{heapIG Σ, channelIG Σ, petrinetIG Σ}.
+  Context `{heapIG Σ, channelIG Σ}
+          {chat_petri : abstract_petrinet}
+          `{abstract_nick_comm_prog}.
 
-  Variable ReceiveFromNick : iProp Σ → val → Stream val → iProp Σ.
-  Variable SendToNick : iProp Σ → val → Stream val → iProp Σ.
+  Class abstract_nick_comm :=
+    Abstract_Nick_Comm {
+        ReceiveFromNick : places chat_petri → val → Stream val → iProp Σ;
+        SendToNick : places chat_petri → val → Stream val → iProp Σ;
+        wp_receive_from_nick : ∀ r n m μ,
+            {{{ token r ∗ ReceiveFromNick r n {| Shead := m; Stail := μ|} }}}
+              App receive_from_nick (of_val n)
+              {{{ RET m; ∃ r', token r' ∗ ReceiveFromNick r' n μ }}};
+        wp_send_to_nick : ∀ s n m μ,
+            {{{ token s ∗ SendToNick s n {| Shead := m; Stail := μ|} }}}
+              App (App send_to_nick (of_val n)) (of_val m)
+              {{{ RET UnitV; ∃ s', token s' ∗ SendToNick s' n μ }}}
+      }.
 
-  Definition token P : iProp Σ := P.
-
-  Variables send_to_nick receive_from_nick : expr.
-
-  Hypothesis send_to_nick_closed : ∀ f, send_to_nick.[f] = send_to_nick.
-  Hypothesis receive_from_nick_closed :
-    ∀ f, receive_from_nick.[f] = receive_from_nick.
+  Context `{abstract_nick_comm}.
 
   Hint Rewrite send_to_nick_closed receive_from_nick_closed : autosubst.
-
-  Hypothesis wp_receive_from_nick : ∀ r n m μ,
-    {{{ token r ∗ ReceiveFromNick r n {| Shead := m; Stail := μ|} }}}
-      App receive_from_nick (of_val n)
-    {{{ RET m; ∃ r', token r' ∗ ReceiveFromNick r' n μ }}}.
-
-  Hypothesis wp_send_to_nick : ∀ s n m μ,
-    {{{ token s ∗ SendToNick s n {| Shead := m; Stail := μ|} }}}
-      App (App send_to_nick (of_val n)) (of_val m)
-    {{{ RET UnitV; ∃ s', token s' ∗ SendToNick s' n μ }}}.
 
   Definition pumpFromNick :=
     Lam
@@ -146,8 +152,7 @@ Section chat_server.
       ).
 
   Definition SendToNicks s n1 n2 μ :=
-    (∃ s1 s2, (token s ==∗ token s1 ∗ token s2)
-                ∗ SendToNick s1 n1 μ ∗ SendToNick s2 n2 μ)%I.
+    (∃ s1 s2, Split s s1 s2 ∗ SendToNick s1 n1 μ ∗ SendToNick s2 n2 μ)%I.
 
   Theorem wp_serverChatRoom n1 n2 r1 r2 s μ1 μ2 :
     (∀ f, (of_val n1).[f] = (of_val n1)) →
@@ -178,12 +183,12 @@ Section chat_server.
     iNext; iModIntro.
     iApply wp_pure_step_later; trivial. iNext.
     iDestruct ("Hsnd" $! μ Hint) as (s1 s2) "(Hsplit & Hsnd1 & Hsnd2)".
-    iMod ("Hsplit" with "Hs") as "[Hs1 Hs2]".
+    iMod (Split_ws with "Hsplit Hs") as "[? ?]".
     iApply (wp_pumpRoom _ s1 s2 with "[-HΦ]"); iFrame.
   Qed.
 
 End chat_server.
 
-Hint Rewrite pumpFromNick_closed : autosubst.
+Hint Rewrite @pumpFromNick_closed : autosubst.
 
-Hint Rewrite pumpRoom_closed : autosubst.
+Hint Rewrite @pumpRoom_closed : autosubst.
