@@ -14,21 +14,20 @@ Class abstract_nick_comm_prog :=
 
 Section chat_server.
   Context `{heapIG Σ, channelIG Σ}
-          {chat_petri : abstract_petrinet}
           `{abstract_nick_comm_prog}.
 
   Class abstract_nick_comm :=
     Abstract_Nick_Comm {
-        ReceiveFromNick : places chat_petri → val → Stream val → iProp Σ;
-        SendToNick : places chat_petri → val → Stream val → iProp Σ;
+        ReceiveFromNick : abs_place → val → Stream val → iProp Σ;
+        SendToNick : abs_place → val → Stream val → iProp Σ;
         wp_receive_from_nick : ∀ r n m μ,
-            {{{ token r ∗ ReceiveFromNick r n {| Shead := m; Stail := μ|} }}}
+            {{{ abs_token r ∗ ReceiveFromNick r n {| Shead := m; Stail := μ|} }}}
               App receive_from_nick (of_val n)
-              {{{ RET m; ∃ r', token r' ∗ ReceiveFromNick r' n μ }}};
+              {{{ RET m; ∃ r', abs_token r' ∗ ReceiveFromNick r' n μ }}};
         wp_send_to_nick : ∀ s n m μ,
-            {{{ token s ∗ SendToNick s n {| Shead := m; Stail := μ|} }}}
+            {{{ abs_token s ∗ SendToNick s n {| Shead := m; Stail := μ|} }}}
               App (App send_to_nick (of_val n)) (of_val m)
-              {{{ RET UnitV; ∃ s', token s' ∗ SendToNick s' n μ }}}
+              {{{ RET UnitV; ∃ s', abs_token s' ∗ SendToNick s' n μ }}}
       }.
 
   Context `{abstract_nick_comm}.
@@ -53,7 +52,7 @@ Section chat_server.
   Hint Rewrite pumpFromNick_closed : autosubst.
 
   Lemma wp_pumpFromNick r roomCh n μ :
-    {{{ token r ∗ ReceiveFromNick r n μ ∗ sender roomCh μ }}}
+    {{{ abs_token r ∗ ReceiveFromNick r n μ ∗ sender roomCh μ }}}
       App (App pumpFromNick (of_val n)) (of_val roomCh)
     {{{RET UnitV; False}}}.
   Proof.
@@ -104,7 +103,7 @@ Section chat_server.
   Hint Rewrite pumpRoom_closed : autosubst.
 
   Lemma wp_pumpRoom roomCh s1 s2 n1 n2 μ :
-    {{{ token s1 ∗ SendToNick s1 n1 μ ∗ token s2 ∗ SendToNick s2 n2 μ
+    {{{ abs_token s1 ∗ SendToNick s1 n1 μ ∗ abs_token s2 ∗ SendToNick s2 n2 μ
               ∗ receiver roomCh μ }}}
       App (App (App pumpRoom (of_val n1)) (of_val n2)) (of_val roomCh)
     {{{RET UnitV; False}}}.
@@ -152,14 +151,14 @@ Section chat_server.
       ).
 
   Definition SendToNicks s n1 n2 μ :=
-    (∃ s1 s2, Split s s1 s2 ∗ SendToNick s1 n1 μ ∗ SendToNick s2 n2 μ)%I.
+    (∃ s1 s2, abs_split s s1 s2 ∗ SendToNick s1 n1 μ ∗ SendToNick s2 n2 μ)%I.
 
   Theorem wp_serverChatRoom n1 n2 r1 r2 s μ1 μ2 :
     (∀ f, (of_val n1).[f] = (of_val n1)) →
     (∀ f, (of_val n2).[f] = (of_val n2)) →
-    {{{ token r1 ∗ ReceiveFromNick r1 n1 μ1 ∗
-        token r2 ∗ ReceiveFromNick r2 n2 μ2 ∗
-        token s ∗ ∀ μ, ⌜interleaving μ1 μ2 μ⌝ → SendToNicks s n1 n2 μ }}}
+    {{{ abs_token r1 ∗ ReceiveFromNick r1 n1 μ1 ∗
+        abs_token r2 ∗ ReceiveFromNick r2 n2 μ2 ∗
+        abs_token s ∗ ∀ μ, ⌜interleaving μ1 μ2 μ⌝ → SendToNicks s n1 n2 μ }}}
       serveChatRoom n1 n2
   {{{RET UnitV; False}}}.
   Proof.
@@ -182,8 +181,8 @@ Section chat_server.
     { by iApply (wp_pumpFromNick r2 with "[-]"); iFrame. }
     iNext; iModIntro.
     iApply wp_pure_step_later; trivial. iNext.
-    iDestruct ("Hsnd" $! μ Hint) as (s1 s2) "(Hsplit & Hsnd1 & Hsnd2)".
-    iMod (Split_ws with "Hsplit Hs") as "[? ?]".
+    iDestruct ("Hsnd" $! μ Hint) as (s1 s2) "(#Hsplit & Hsnd1 & Hsnd2)".
+    iMod ("Hsplit" with "Hs") as "[? ?]".
     iApply (wp_pumpRoom _ s1 s2 with "[-HΦ]"); iFrame.
   Qed.
 

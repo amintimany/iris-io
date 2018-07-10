@@ -1,6 +1,6 @@
 From iris.base_logic Require Export invariants.
 From iris.algebra Require Import auth frac agree gmap.
-From iris_io Require Export lang rules.
+From iris_io Require Export lang rules full_erasure.
 From iris.proofmode Require Import tactics.
 
 Require Import Coq.Logic.FunctionalExtensionality.
@@ -77,6 +77,21 @@ Section PetriNet.
       N (NoOpTr p q) →
       Traces N (singVAL q ⊎ V) τ →
       Traces N (singVAL p ⊎ V) τ.
+
+  Lemma Traces_prefix_closed N V : prefix_closed (Traces N V).
+  Proof.
+    intros τ τ' Htr.
+    remember (τ ++ τ') as ττ'. revert τ τ' Heqττ'.
+    induction Htr; intros τ1 τ2 Heqττ.
+    - destruct τ1; inversion Heqττ; econstructor.
+    - destruct τ1.
+      + destruct τ2; inversion Heqττ; subst; econstructor.
+      + inversion Heqττ; subst.
+        econstructor; eauto.
+    - econstructor; eauto.
+    - econstructor; eauto.
+    - econstructor 5; eauto.
+  Qed.
 
   Definition ResultDet (T : ioSpec) :=
     ∀ t v v' v'' τ τ' τ'',
