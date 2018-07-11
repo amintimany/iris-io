@@ -1,11 +1,8 @@
 From iris.base_logic Require Export invariants.
 From iris.algebra Require Import auth frac agree gmap.
-From iris_io Require Export lang rules.
 From iris.proofmode Require Import tactics.
-From iris_io Require Import lang rules.
-From iris Require Import proofmode.tactics.
+From iris_io Require Import lang rules list.
 From iris.program_logic Require Import weakestpre lifting.
-From iris.algebra Require Import agree frac.
 
 Class channelIG Σ := ChannelIG {
    stream_inG :> inG Σ (prodR (fracR) (agreeR (leibnizC (Stream val))));
@@ -18,21 +15,6 @@ Definition channelΣ :=
 
 Global Instance subG_channelΣ Σ : subG channelΣ Σ → channelIG Σ.
 Proof. solve_inG. Qed.
-
-Fixpoint of_list (l : list val) :=
-  match l with
-    [] => InjLV Plang.UnitV
-  | v :: l' => InjRV (PairV v (of_list l'))
-  end.
-
-Global Instance of_list_inj : Inj eq eq of_list.
-Proof.
-  intros x.
-  induction x => y Heq; first by destruct y.
-  destruct y; first done.
-  inversion Heq; subst.
-  f_equal. by apply IHx.
-Qed.
 
 Section channels.
 
@@ -108,74 +90,6 @@ Section channels.
     iSplitL "Hμ22"; first by iExists _, _, _, _; iFrame; iFrame "#"; eauto.
     iExists μ; iSplit; first by iApply cpvar_contains.
     iExists _, _, _, _, _, _; iFrame "#"; iFrame; eauto.
-  Qed.
-
-  Definition append :=
-    Rec
-      (Lam
-         (Case
-            (Var 2) (Var 1)
-            (InjR
-               (Pair (Fst (Var 0)) (App (App (Var 2) (Snd (Var 0))) (Var 1)))
-            )
-         )
-      ).
-
-  Lemma append_closed f : append.[f] = append.
-  Proof. by asimpl. Qed.
-
-  Hint Rewrite append_closed : autosubst.
-
-  Lemma append_eq :
-    append = Rec
-      (Lam
-         (Case
-            (Var 2) (Var 1)
-            (InjR
-               (Pair (Fst (Var 0)) (App (App (Var 2) (Snd (Var 0))) (Var 1)))
-            )
-         )
-      ).
-  Proof. trivial. Qed.
-
-  Typeclasses Opaque append.
-  Global Opaque append.
-
-  Lemma wp_append `{heapIG Σ} l l' :
-    {{{True}}} (App (App append (of_val (of_list l))) (of_val (of_list l')))
-       {{{w, RET w; ⌜w = of_list (l ++ l')⌝}}}.
-  Proof.
-    iIntros (Φ) "_ HΦ".
-    iLöb as "IH" forall (Φ l).
-    rewrite append_eq.
-    iApply (wp_bind (fill [AppLCtx _])).
-    iApply wp_pure_step_later; auto.
-    rewrite -append_eq.
-    iNext. asimpl.
-    iApply wp_value. simpl.
-    iApply wp_pure_step_later; auto.
-    iNext. asimpl.
-    destruct l.
-    - simpl. iApply wp_pure_step_later; eauto.
-      iNext. asimpl. iApply wp_value. by iApply "HΦ".
-    - simpl. iApply wp_pure_step_later; auto.
-      iNext. asimpl.
-      iApply (wp_bind (fill [InjRCtx])).
-      iApply (wp_bind (fill [PairLCtx _])).
-      iApply wp_pure_step_later; auto.
-      iNext; iApply wp_value. simpl.
-      iApply (wp_bind (fill [PairRCtx _])).
-      rewrite append_eq.
-      iApply (wp_bind (fill [AppRCtx (RecV _); AppLCtx _])).
-      iApply wp_pure_step_later; auto.
-      iNext; iApply wp_value; simpl.
-      iApply wp_wand_r; iSplitR.
-      { iApply ("IH" $! (λ s, ⌜s = of_list (l ++ l')⌝))%I. iNext.
-        by iIntros (w Hw); subst w. }
-      simpl.
-      iIntros (w) "%"; subst; simpl.
-      do 2 iApply wp_value.
-      by iApply "HΦ".
   Qed.
 
   Definition send :=

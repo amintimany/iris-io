@@ -505,7 +505,7 @@ Proof.
     first done.
   iModIntro. iExists _. pose (make_heapIG γio). iFrame.
   iMod (PetriNetInv_alloc with "HOI") as (γpn) "[#HPi HOV]".
-  { apply chat_server_petri_ResultDet. }
+  { apply chat_server_petri_ResultDet; econstructor. }
   pose ({| γPN := γpn; ThePetriNet := chat_server_petri μ1 μ2|}) as PN.
   iModIntro. iExists PN.
   iAssert (@Token chat_server_petri_placesC _ _ _ CHPP_Start) with "[$HOV]"
