@@ -2,9 +2,9 @@
 
 Verifies with
 - [Coq 8.7.2](https://github.com/coq/coq/releases/download/V8.7.2/coq-8.7.2-installer-windows-x86_64.exe)
-- [Coq-std++](https://gitlab.mpi-sws.org/robbertkrebbers/coq-stdpp/commit/4c60de243e83372f2907f1315ddbdf9ae1f70956)
+- [Coq-std++](https://gitlab.mpi-sws.org/robbertkrebbers/coq-stdpp/commit/aa942ca85603ae4e88a963abc7691e77ed3c46a7)
 - [Ssreflect](https://github.com/math-comp/math-comp/archive/mathcomp-1.6.4.zip)
-- [Iris](https://gitlab.mpi-sws.org/FP/iris-coq/commit/db735a4558adb12e3103c779b690abd394fc1649)
+- [Iris](https://gitlab.mpi-sws.org/FP/iris-coq/commit/1d29427d2532d1873f94d158bce72f18a7912f55)
 - [Autosubst](https://github.com/uds-psl/autosubst/commit/d0d73557979796b3d4be7aac72135581c33f26f7)
 
 To verify, just type `make`.
@@ -31,6 +31,9 @@ To verify, just type `make`.
 - `coin.v` - Verifies the *coin toss* concurrent data structure.
 
 ## Axioms used
+
+Note that axioms below reported by coqchk starting with "iris." are
+not axioms; coqchk gets confused by the module system of Coq.
 
 ```
 $ coqchk -o -R . iris_io -silent -admit stdpp.pretty iris_io.erasure iris_io.coin
