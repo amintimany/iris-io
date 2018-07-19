@@ -89,14 +89,6 @@ Section buffered_io.
   Typeclasses Opaque write.
   Global Opaque write.
 
-  Fixpoint write_prim_ p c q :=
-    match c with
-    | [] => p = q
-    | v :: c' =>
-      ∃ s, ThePetriNet (IOTr p write_char_tag v Plang.UnitV s)
-           ∧ write_prim_ s c' q
-    end.
-
   Definition write_char_ P v Q :=
     (∃ p q R, (P ={⊤}=> Token p ∗ R)
                 ∗ ⌜ThePetriNet (IOTr p write_char_tag v Plang.UnitV q)⌝
@@ -149,16 +141,6 @@ Section buffered_io.
       + iApply ("IH" with "[] [] []"); eauto.
   Qed.
 
-  Lemma write_prim_extend p c q v q' :
-    write_prim_ p c q → ThePetriNet (IOTr q write_char_tag v Plang.UnitV q') →
-    write_prim_ p (c ++ [v]) q'.
-  Proof.
-    revert p q v; induction c => p q v Hc Hv.
-    - simpl in *; simplify_eq.
-      eexists _; repeat split; eauto.
-    - destruct Hc as [s [Hs Hw]]; eexists _; eauto.
-  Qed.
-
   Lemma write_extend P c Q c' Q' :
     write_ P c Q -∗ write_ Q c' Q' -∗ write_ P (c ++ c') Q'.
   Proof.
@@ -171,23 +153,23 @@ Section buffered_io.
       iApply "IH"; eauto.
   Qed.
 
-  Lemma wp_write p c q :
-    write_prim_ p c q →
-    {{{ Token p }}}
+  Lemma wp_write P c Q :
+    {{{ P ∗ write_ P c Q }}}
       (App write (of_val (of_list c)))
-    {{{RET  UnitV; Token q }}}.
+    {{{RET  UnitV; Q }}}.
   Proof.
-  iIntros (Hwr Φ) "Hp HΦ".
-  iInduction c as [|x c] "IH" forall (p q Hwr).
+  iIntros (Φ) "[Hp #Hwr] HΦ".
+  iInduction c as [|x c] "IH" forall (P Q) "Hwr".
   - simpl in *; subst.
     rewrite write_eq.
     iApply wp_pure_step_later; auto.
     rewrite -write_eq.
     iNext. asimpl.
     iApply wp_pure_step_later; auto.
-    asimpl. iNext. iApply wp_value.
-    by iApply "HΦ"; iFrame.
-  - destruct Hwr as [s [Hs Hwr]]; simpl in *.
+    asimpl. iNext. iApply wp_fupd. iApply wp_value.
+    iApply "HΦ". by iMod ("Hwr" with "Hp").
+  - simpl. iDestruct "Hwr" as (S) "[Hs Hwr]"; simpl in *.
+    iDestruct "Hs" as (p q R) "(HP & % & HQ)".
     rewrite write_eq.
     iApply wp_pure_step_later; auto.
     rewrite -write_eq.
@@ -198,8 +180,10 @@ Section buffered_io.
     iApply (wp_bind (fill [IORCtx (IOtagV _)])).
     iApply wp_pure_step_later; auto.
     iNext. iApply wp_value; simpl.
+    iMod ("HP" with "Hp") as "[Hp HR]".
     iApply (wp_petrinet_io with "Hp"); eauto.
     iIntros "!> Hs".
+    iMod ("HQ" with "[$Hs $HR]") as "Hs".
     iApply wp_pure_step_later; auto.
     iNext. asimpl.
     iApply (wp_bind (fill [LetInCtx _])).
@@ -207,9 +191,9 @@ Section buffered_io.
     iNext. iApply wp_value; simpl.
     iApply wp_pure_step_later; auto.
     iNext. asimpl.
-    iApply ("IH" with "[] Hs"); eauto.
+    iApply ("IH" with "Hs [$HΦ] []"); eauto.
   Qed.
- 
+
   Section main.
     Variable buffer : loc.
 
@@ -284,14 +268,14 @@ Section buffered_io.
       iApply (wp_load with "Hl"); iIntros "!> Hl /=".
       iApply wp_pure_step_later; trivial.
       iNext. asimpl.
-      iApply (wp_write with "Hq"); eauto.
+      iApply (wp_write with "[Hq]"); first by iFrame "#".
       iNext. iIntros "Hpt1"; simplify_eq.
       iApply wp_pure_step_later; trivial.
       iNext.
       iApply wp_fupd.
       iApply (wp_store with "Hl"); iIntros "!> Hl /=".
       iMod ("Hp2" with "[$HR Hpt1 Hl]") as "HQ".
-      { iExists [_], _; iFrame; simpl; eauto. }
+      { iExists [_], _; iFrame "#"; iFrame; simpl; eauto. }
       by iModIntro; iApply "HΦ"; iFrame.
     - iApply wp_value.
       iNext.
@@ -306,7 +290,8 @@ Section buffered_io.
       iApply wp_fupd.
       iApply (wp_store with "Hl"); iIntros "!> Hl /=".
       iMod ("Hp2" with "[$HR Hq Hl]") as "HQ".
-      { iExists (_ ++ [_]), _; iFrame; simpl; eauto using write_extend. }
+      { iExists (_ ++ [_]), q; iFrame "#"; iFrame; simpl.
+        by iApply write_extend. }
       by iModIntro; iApply "HΦ"; iFrame.
   Qed.
 
@@ -329,8 +314,8 @@ Section buffered_io.
   Global Opaque flush.
 
   Definition flush_ P Q :=
-    (∃ p' R, (P ={⊤}=> buffer_token p' ∗ R)
-               ∗ (Token p' ∗ buffer ↦ (InjLV UnitV) ∗ R ={⊤}=> Q))%I.
+    (∃ P' R, (P ={⊤}=> buffer_token P' ∗ R)
+               ∗ (P' ∗ buffer ↦ (InjLV UnitV) ∗ R ={⊤}=> Q))%I.
 
   Lemma wp_flush P Q :
     {{{ P ∗ flush_ P Q }}} flush.[main_ctx] {{{ RET UnitV; Q }}}.
@@ -338,14 +323,14 @@ Section buffered_io.
     iIntros (Φ) "[HP Hfl] HΦ".
     iDestruct "Hfl" as (p' R) "(#Hp & #HQ)".
     iMod ("Hp" with "HP") as "[HP HR]".
-    iDestruct "HP" as (c q) "(Hl & Hq & %)".
+    iDestruct "HP" as (c q) "(Hl & Hq & #Hwr)".
     rewrite flush_eq. asimpl.
     iApply (wp_bind (fill [SeqCtx _])).
     iApply (wp_bind (fill [LetInCtx _])).
     iApply (wp_load with "Hl"); iIntros "!> Hl /=".
     iApply wp_pure_step_later; trivial.
     iNext. asimpl.
-    iApply (wp_write with "Hq"); eauto.
+    iApply (wp_write q with "[Hq]"); eauto.
     iNext. iIntros "Hp'"; subst.
     iApply wp_pure_step_later; trivial.
     iNext.
@@ -383,52 +368,30 @@ Section buffered_io.
   Definition start :=
     LetIn (Alloc (InjL Plang.Unit)) main.
 
-  Lemma wp_start p1 p2 p3 :
-    {{{ (Token p1) ∗ beep_ (Token p1) (Token p2) ∗ write_ (Token p2) [(#nv 1)] (Token p3) }}}
+  Lemma wp_start P1 P2 P3 :
+    {{{ P1 ∗ beep_ P1 P2 ∗ write_ P2 [(#nv 1)] P3 }}}
       start
-    {{{RET UnitV; Token p3 }}}.
+    {{{RET UnitV; P3 }}}.
   Proof.
     iIntros (Φ) "(Hp1 & #Hbp & #Hwr) HΦ".
-    iDestruct "Hwr" as (p2' p3' R) "(Hp2 & Hwr & Hp3)"; simpl in *.
-    iDestruct "Hwr" as %[s [Hwr ?]]; simpl in *; simplify_eq.
     iApply (wp_bind (fill [LetInCtx _])).
     iApply (wp_alloc); auto; iNext; iIntros (l) "Hl /=".
     iApply wp_pure_step_later; trivial.
     iNext.
     iApply (wp_main _ (P1 ∗ l ↦ InjLV UnitV) (P2 ∗ l ↦ InjLV UnitV)
-              (buffer_token l P3) (l ↦ InjLV UnitV ∗ P3)  with "[Hp1 Hl] [HΦ]")%I.
-
-asimpl.
-    iApply (wp_bind (fill [SeqCtx _])).
-    iApply (wp_beep with "[Hp1]")%I.
-    { by iFrame "#". }
-    iNext. iIntros "HP2". simpl.
-    iApply wp_pure_step_later; trivial.
-    iNext.
-    iApply (wp_bind (fill [SeqCtx _])).
-    iApply (wp_putchar _ (P2 ∗ l ↦ InjLV UnitV) (#nv _)
-                       (buffer_token l p3 ∗ R)%I
-              with "[HP2 Hl] [HΦ]").
-    { iFrame. iExists _, _, R.
-      repeat iSplit; eauto.
-      - iIntros "!# [HP2 Hl]".
-        iMod ("Hp2" with "HP2") as "[HP2 HR]".
-        iFrame. iModIntro. iExists [], _; iFrame; eauto.
-      -  by iIntros "!# [$ $]". }
-    iNext. iIntros "[Hbt HR] /=".
-    iApply wp_pure_step_later; trivial.
-    iNext.
-    iApply wp_fupd.
-    iApply (wp_flush _ (buffer_token l p3 ∗ R) (Token p3 ∗ l ↦ InjLV UnitV ∗ R)
-              with "[$Hbt $HR]")%I; eauto.
-    { iExists _, R. iSplit.
-      - by iIntros "!# [$ $]".
-      - by iIntros "!# ($ & $ & $)". }
-    iNext. iIntros "(HP3 & Hl & HR)".
-    iMod ("Hp3" with "[$HP3 $HR]") as "HP3".
-    by iApply "HΦ".
+                    (buffer_token l P3) (l ↦ InjLV UnitV ∗ P3)
+              with "[Hp1 Hl] [HΦ]")%I.
+    - iFrame; repeat iSplit.
+      + by iApply beep_frame.
+      + iExists P2, P3, True%I; rewrite !right_id; repeat iSplit; eauto.
+        * iIntros "!# [? ?]"; iExists [], P2; iFrame.
+          by iIntros "!>!# $".
+        * by iIntros "!# $".
+      + iExists P3, True%I; rewrite !right_id; iSplit.
+        * by iIntros "!# $".
+        * by iIntros "!# [$ $]".
+    - iNext. iIntros "[_ ?]". by iApply "HΦ".
   Qed.
-
 
 End buffered_io.
 
@@ -448,7 +411,7 @@ Inductive bufferedIO_petri : PetriNet :=
 | BIO_beepTR :
     bufferedIO_petri (IOTr BIO_Start beep_tag UnitV UnitV BIO_beep_done)
 | BIO_writeTR :
-    bufferedIO_petri (IOTr BIO_beep_done write_tag (#nv 1) UnitV BIO_write_done).
+    bufferedIO_petri (IOTr BIO_beep_done write_char_tag (#nv 1) UnitV BIO_write_done).
 
 Lemma singVAL_eq p q V : singVAL p ⊎ V = singVAL q → p = q ∧ V = (λ x, 0).
 Proof.
@@ -476,7 +439,7 @@ end.
 Lemma Traces_bufferedIO_petri τ :
   Traces bufferedIO_petri (singVAL BIO_Start) τ →
   τ = [] ∨ τ = [(beep_tag, UnitV, UnitV)] ∨
-  τ = [(beep_tag, UnitV, UnitV); (write_tag, (#nv 1), UnitV)].
+  τ = [(beep_tag, UnitV, UnitV); (write_char_tag, (#nv 1), UnitV)].
 Proof.
   inversion 1; eauto; try trvial_petri.
   edestruct singVAL_eq; eauto; simplify_eq.
@@ -552,10 +515,13 @@ Proof.
       + by iIntros "!# $".
       + iPureIntro; econstructor.
       + by iIntros "!# [$ _]".
-    - iExists BIO_beep_done, BIO_write_done, True%I; repeat iSplit.
-      + by iIntros "!# $".
-      + iPureIntro. eexists _; simpl; split; eauto using bufferedIO_petri.
-      + by iIntros "!# [$ _]". }
+    - iExists (tk BIO_write_done); iSplit.
+      + iExists BIO_beep_done, BIO_write_done, True%I;
+          rewrite !right_id; repeat iSplit.
+        * by iIntros "!# $".
+        * iPureIntro; constructor.
+        * by iIntros "!# $".
+      +  by iIntros "!# $". }
   by iIntros "!> _".
 Qed.
 
