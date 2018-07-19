@@ -9,7 +9,53 @@ Section buffered_io.
   Context `{heapIG Σ, petrinetIG Σ}.
 
   Definition beep_tag := 1%positive.
-  Definition write_tag := 2%positive.
+  Definition write_char_tag := 2%positive.
+
+  Definition beep := IO (IOtag beep_tag) Plang.Unit.
+
+  Lemma beep_eq : beep = IO (IOtag beep_tag) Plang.Unit.
+  Proof. done. Qed.
+
+  Lemma beep_closed : ∀ f, beep.[f] = beep.
+  Proof. done. Qed.
+
+  Hint Rewrite beep_closed : autosubst.
+
+  Typeclasses Opaque beep.
+  Global Opaque beep.
+
+  Definition beep_ P Q :=
+    (∃ p q R,
+        (P ={⊤}=> Token p ∗ R)
+          ∗ ⌜ThePetriNet (IOTr p beep_tag Plang.UnitV Plang.UnitV q)⌝
+          ∗ (Token q ∗ R ={⊤}=> Q)
+    )%I.
+
+  Lemma beep_frame P Q R :
+    beep_ P Q -∗ beep_ (P ∗ R) (Q ∗ R).
+  Proof.
+    iDestruct 1 as (p q R') "(#Hp & % & #Hq)".
+    iExists p, q, (R ∗ R')%I.
+    repeat iSplit; trivial.
+    - iIntros "!# [HP HR]".
+      by iMod ("Hp" with "HP") as "[$ $]".
+    - iIntros "!# (HQ & $ & HR')".
+      by iMod ("Hq" with "[$HQ $HR']") as "$".
+  Qed.
+
+  Lemma wp_beep P Q :
+    {{{ P ∗ beep_ P Q }}} beep {{{ RET UnitV; Q }}}.
+  Proof.
+    iIntros (Φ) "[HP Hbp] HΦ".
+    iDestruct "Hbp" as (p q R) "(#Hp & % & #Hq)".
+    iMod ("Hp" with "HP") as "[Htp HR]".
+    iApply wp_fupd.
+    rewrite beep_eq.
+    iApply (wp_petrinet_io with "Htp"); eauto.
+    iNext. iIntros "Htq".
+    iMod ("Hq" with "[$Htq $HR]") as "HQ".
+    by iModIntro; iApply ("HΦ" with "[$HQ]").
+  Qed.
 
   Definition write :=
     Rec
@@ -17,7 +63,7 @@ Section buffered_io.
          (Var 1)
          Plang.Unit
          (Seq
-            (IO (IOtag write_tag) (Fst (Var 0)))
+            (IO (IOtag write_char_tag) (Fst (Var 0)))
             (LetIn (Snd (Var 0)) (App (Var 2) (Var 0)))
          )
       ).
@@ -32,7 +78,7 @@ Section buffered_io.
          (Var 1)
          Plang.Unit
          (Seq
-            (IO (IOtag write_tag) (Fst (Var 0)))
+            (IO (IOtag write_char_tag) (Fst (Var 0)))
             (LetIn (Snd (Var 0)) (App (Var 2) (Var 0)))
          )
       ).
@@ -47,22 +93,82 @@ Section buffered_io.
     match c with
     | [] => p = q
     | v :: c' =>
-      ∃ s, ThePetriNet (IOTr p write_tag v Plang.UnitV s)
+      ∃ s, ThePetriNet (IOTr p write_char_tag v Plang.UnitV s)
            ∧ write_prim_ s c' q
     end.
 
-  Definition write_ P c Q :=
+  Definition write_char_ P v Q :=
     (∃ p q R, (P ={⊤}=> Token p ∗ R)
-                ∗ ⌜write_prim_ p c q⌝ ∗ (Token q ∗ R ={⊤}=> Q))%I.
+                ∗ ⌜ThePetriNet (IOTr p write_char_tag v Plang.UnitV q)⌝
+                ∗ (Token q ∗ R ={⊤}=> Q))%I.
 
-  Lemma write_extend p c q v q' :
-    write_prim_ p c q → ThePetriNet (IOTr q write_tag v Plang.UnitV q') →
+  Lemma write_char_frame P v Q R P' Q' :
+    write_char_ P v Q -∗ (P' ={⊤}=> P ∗ R) -∗ (Q ∗ R ={⊤}=> Q') -∗
+    write_char_ P' v Q'.
+  Proof.
+    iDestruct 1 as (p q R') "(#Hp & % & #Hq)".
+    iIntros "#HP' #HQ'".
+    iExists p, q, (R ∗ R')%I; repeat iSplit; eauto.
+    - iIntros "!# Hp'". iMod ("HP'" with "Hp'") as "[HP $]".
+      by iMod ("Hp" with "HP") as "[$ $]".
+    - iIntros "!# (HQ & HR & HR')". iMod ("Hq" with "[$HQ $HR']") as "HQ".
+      by iApply "HQ'"; iFrame.
+  Qed.
+
+  Fixpoint write_ P c Q :=
+    match c with
+    | [] => P ={⊤}=> Q
+    | v :: c' =>
+      ∃ S, write_char_ P v S ∗ write_ S c' Q
+    end%I.
+
+  Global Instance write_pers P c Q : Persistent (write_ P c Q).
+  Proof.
+    rewrite /Persistent.
+    iIntros "Hwr".
+    iInduction c as [|v c] "IH" forall (P Q).
+    - by iDestruct "Hwr" as "#Hwr".
+    - simpl. iDestruct "Hwr" as (S) "[#Hwv Hwr]".
+      iExists S; iSplit; eauto.
+      by iApply "IH".
+  Qed.
+
+  Lemma write_frame P c Q R P' Q' :
+    write_ P c Q -∗ (P' ={⊤}=> P ∗ R) -∗ (Q ∗ R ={⊤}=> Q') -∗
+    write_ P' c Q'.
+  Proof.
+    iIntros "#Hwr #HP #HQ".
+    iInduction c as [|v c] "IH" forall (P' P Q) "Hwr HP HQ".
+    - iIntros "!# Hp". iMod ("HP" with "Hp") as "[Hp HR]".
+      iMod ("Hwr" with "Hp") as "Hq".
+      iApply "HQ"; iFrame.
+    - simpl. iDestruct "Hwr" as (S) "[Hwv Hwr]".
+      iExists (S ∗ R)%I; iSplit.
+      + iApply (write_char_frame with "[] []"); eauto.
+        by iIntros "!# [$ $]".
+      + iApply ("IH" with "[] [] []"); eauto.
+  Qed.
+
+  Lemma write_prim_extend p c q v q' :
+    write_prim_ p c q → ThePetriNet (IOTr q write_char_tag v Plang.UnitV q') →
     write_prim_ p (c ++ [v]) q'.
   Proof.
     revert p q v; induction c => p q v Hc Hv.
     - simpl in *; simplify_eq.
       eexists _; repeat split; eauto.
     - destruct Hc as [s [Hs Hw]]; eexists _; eauto.
+  Qed.
+
+  Lemma write_extend P c Q c' Q' :
+    write_ P c Q -∗ write_ Q c' Q' -∗ write_ P (c ++ c') Q'.
+  Proof.
+    iIntros "#Hwr #Hwr'".
+    iInduction c as [|v c] "IH" forall (P).
+    - simpl. iApply (write_frame _ _ _ True); eauto; rewrite !right_id; eauto.
+      by iIntros "!# $".
+    - simpl. iDestruct "Hwr" as (S) "[Hwv Hc]".
+      iExists S; iFrame "#".
+      iApply "IH"; eauto.
   Qed.
 
   Lemma wp_write p c q :
@@ -103,53 +209,59 @@ Section buffered_io.
     iNext. asimpl.
     iApply ("IH" with "[] Hs"); eauto.
   Qed.
+ 
+  Section main.
+    Variable buffer : loc.
 
-  Definition putchar l :=
-    Lam
-      (If
-         (BinOp Eq (#n 1000) (App list_length (Load l.[ren (+1)])))
-         (Seq (LetIn (Load l.[ren (+1)]) (App write (Var 0)))
-              (Store l.[ren (+1)] (InjR (Pair (Var 0) (InjL Plang.Unit)))))
-         (LetIn (Load l.[ren (+1)])
-                (Store l.[ren (+2)] (App (App snoc (Var 0)) (Var 1))))).
+    Definition main_ctx := scons (Loc buffer) ids.
 
-  Lemma putchar_closed l :
-    ∀ f, (putchar l).[f] = (putchar l.[f]).
-  Proof. by intros f; rewrite /putchar; asimpl. Qed.
+    Definition putchar :=
+      Lam
+        (If
+           (BinOp Eq (#n 1000) (App list_length (Load (Var 1))))
+           (Seq (LetIn (Load (Var 1)) (App write (Var 0)))
+                (Store (Var 1) (InjR (Pair (Var 0) (InjL Plang.Unit)))))
+           (LetIn (Load (Var 1))
+                  (Store (Var 2) (App (App snoc (Var 0)) (Var 1))))).
 
-  Hint Rewrite putchar_closed : autosubst.
+    Lemma putchar_closed :
+      ∀ f, putchar.[up f] = putchar.
+    Proof. by intros f; rewrite /putchar; asimpl. Qed.
 
-  Lemma putchar_eq l :
-    putchar l =
-    Lam
-      (If (BinOp Eq (#n 1000) (App list_length (Load l.[ren (+1)])))
-          (Seq (LetIn (Load l.[ren (+1)]) (App write (Var 0)))
-               (Store l.[ren (+1)] (InjR (Pair (Var 0) (InjL Plang.Unit)))))
-          (LetIn (Load l.[ren (+1)])
-                 (Store l.[ren (+2)] (App (App snoc (Var 0)) (Var 1))))).
-  Proof. trivial. Qed.
+    Hint Rewrite putchar_closed : autosubst.
 
-  Typeclasses Opaque putchar.
-  Global Opaque putchar.
+    Lemma putchar_eq :
+      putchar =
+      Lam
+        (If
+           (BinOp Eq (#n 1000) (App list_length (Load (Var 1))))
+           (Seq (LetIn (Load (Var 1)) (App write (Var 0)))
+                (Store (Var 1) (InjR (Pair (Var 0) (InjL Plang.Unit)))))
+           (LetIn (Load (Var 1))
+                  (Store (Var 2) (App (App snoc (Var 0)) (Var 1))))).
+    Proof. trivial. Qed.
 
-  Definition buffer_token l p :=
-    (∃ c p0, l ↦ (of_list c) ∗ Token p0 ∗ ⌜write_prim_ p0 c p⌝)%I.
+    Typeclasses Opaque putchar.
+    Global Opaque putchar.
 
-  Definition putchar_ l p1 v p2 :=
-    (∃ p'1 p'2 R,
-      (p1 ={⊤}=> buffer_token l p'1 ∗ R)
-      ∧ ⌜ThePetriNet (IOTr p'1 write_tag v Plang.UnitV p'2)⌝
-      ∧ (buffer_token l p'2 ∗ R ={⊤}=> p2) )%I.
+    Definition buffer_token P :=
+      (∃ c P0, buffer ↦ (of_list c) ∗ P0 ∗ write_ P0 c P)%I.
 
-  Lemma wp_putchar l P v Q :
-    {{{ P ∗ putchar_ l P v Q }}}
-      App (putchar (Loc l)) (of_val v)
+    Definition putchar_ p1 v p2 :=
+      (∃ p'1 p'2 R,
+          (p1 ={⊤}=> buffer_token p'1 ∗ R)
+          ∧ (write_ p'1 [v] p'2)
+          ∧ (buffer_token p'2 ∗ R ={⊤}=> p2) )%I.
+
+  Lemma wp_putchar P v Q :
+    {{{ P ∗ putchar_ P v Q }}}
+      App (putchar.[main_ctx]) (of_val v)
     {{{RET UnitV; Q }}}.
   Proof.
     iIntros (Φ) "[HP Hpc] HΦ".
-    iDestruct "Hpc" as (p1 p2 R) "(#Hp1 & % & #Hp2)".
+    iDestruct "Hpc" as (p1 p2 R) "(#Hp1 & #Hwr & #Hp2)".
     iMod ("Hp1" with "HP") as "[HP HR]".
-    iDestruct "HP" as (c q) "(Hl & Hq & %)".
+    iDestruct "HP" as (c q) "(Hl & Hq & #Hwr')".
     rewrite putchar_eq.
     iApply wp_pure_step_later; trivial.
     iNext. asimpl.
@@ -198,36 +310,36 @@ Section buffered_io.
       by iModIntro; iApply "HΦ"; iFrame.
   Qed.
 
-  Definition flush l :=
-    Seq (LetIn (Load l) (App write (Var 0)))
-        (Store l (InjL Plang.Unit)).
+  Definition flush :=
+    Seq (LetIn (Load (Var 0)) (App write (Var 0)))
+        (Store (Var 0) (InjL Plang.Unit)).
 
-  Lemma flush_closed l : ∀ f, (flush l).[f] = flush l.[f].
+  Lemma flush_closed : ∀ f, flush.[up f] = flush.
   Proof. done. Qed.
 
   Hint Rewrite flush_closed : autosubst.
 
-  Lemma flush_eq l :
-    flush l =
-    Seq (LetIn (Load l) (App write (Var 0)))
-        (Store l (InjL Plang.Unit)).
+  Lemma flush_eq :
+    flush =
+    Seq (LetIn (Load (Var 0)) (App write (Var 0)))
+        (Store (Var 0) (InjL Plang.Unit)).
   Proof. trivial. Qed.
 
   Typeclasses Opaque flush.
   Global Opaque flush.
 
-  Definition flush_ l P Q :=
-    (∃ p' R, (P ={⊤}=> buffer_token l p' ∗ R)
-               ∗ (Token p' ∗ l ↦ (InjLV UnitV) ∗ R ={⊤}=> Q))%I.
+  Definition flush_ P Q :=
+    (∃ p' R, (P ={⊤}=> buffer_token p' ∗ R)
+               ∗ (Token p' ∗ buffer ↦ (InjLV UnitV) ∗ R ={⊤}=> Q))%I.
 
-  Lemma wp_flush l P Q :
-    {{{ P ∗ flush_ l P Q }}} flush (Loc l) {{{ RET UnitV; Q }}}.
+  Lemma wp_flush P Q :
+    {{{ P ∗ flush_ P Q }}} flush.[main_ctx] {{{ RET UnitV; Q }}}.
   Proof.
     iIntros (Φ) "[HP Hfl] HΦ".
     iDestruct "Hfl" as (p' R) "(#Hp & #HQ)".
     iMod ("Hp" with "HP") as "[HP HR]".
     iDestruct "HP" as (c q) "(Hl & Hq & %)".
-    rewrite flush_eq.
+    rewrite flush_eq. asimpl.
     iApply (wp_bind (fill [SeqCtx _])).
     iApply (wp_bind (fill [LetInCtx _])).
     iApply (wp_load with "Hl"); iIntros "!> Hl /=".
@@ -243,48 +355,50 @@ Section buffered_io.
     by iModIntro; iApply "HΦ"; iFrame.
   Qed.
 
-  Definition beep := IO (IOtag beep_tag) Plang.Unit.
+  Definition main :=
+      (Seq beep (Seq (App (putchar) (#n 1)) flush)).
 
-  Lemma beep_closed : ∀ f, beep.[f] = beep.
-  Proof. done. Qed.
-
-  Definition beep_ P Q :=
-    (∃ p q R,
-        (P ={⊤}=> Token p ∗ R)
-          ∗ ⌜ThePetriNet (IOTr p beep_tag Plang.UnitV Plang.UnitV q)⌝
-          ∗ (Token q ∗ R ={⊤}=> Q)
-    )%I.
-
-  Lemma wp_beep P Q :
-    {{{ P ∗ beep_ P Q }}} beep {{{ RET UnitV; Q }}}.
+  Lemma wp_main Q1 Q2 Q3 Q4 :
+    {{{ Q1 ∗ beep_ Q1 Q2 ∗ putchar_ Q2 (#nv 1) Q3 ∗ flush_ Q3 Q4 }}}
+      main.[main_ctx]
+    {{{RET UnitV; Q4 }}}.
   Proof.
-    iIntros (Φ) "[HP Hbp] HΦ".
-    iDestruct "Hbp" as (p q R) "(#Hp & % & #Hq)".
-    iMod ("Hp" with "HP") as "[Htp HR]".
-    iApply wp_fupd.
-    iApply (wp_petrinet_io with "Htp"); eauto.
-    iNext. iIntros "Htq".
-    iMod ("Hq" with "[$Htq $HR]") as "HQ".
-    by iModIntro; iApply ("HΦ" with "[$HQ]").
+    iIntros (Φ) "(HQ1 & #Hbp & #Hwr & #Hfl) HΦ".
+    asimpl.
+    iApply (wp_bind (fill [SeqCtx _])); simpl.
+    iApply (wp_beep with "[HQ1]"); first by iFrame "#".
+    iNext. iIntros "HQ2".
+    iApply wp_pure_step_later; trivial.
+    iNext.
+    iApply (wp_bind (fill [SeqCtx _])); simpl.
+    iApply (wp_putchar _ (NatV _) with "[HQ2] [HΦ]"); first by iFrame "#".
+    iNext. iIntros "HQ3".
+    iApply wp_pure_step_later; trivial.
+    iNext.
+    iApply (wp_flush with "[HQ3] [HΦ]"); by iFrame "#".
   Qed.
 
-  Definition start :=
-    LetIn
-      (Alloc (InjL Plang.Unit))
-      (Seq beep (Seq (App (putchar (Var 0)) (#n 1)) (flush (Var 0)))).
+  End main.
 
-  Lemma wp_start P1 P2 P3 :
-    {{{ P1 ∗ beep_ P1 P2 ∗ write_ P2 [(#nv 1)] P3 }}}
+  Definition start :=
+    LetIn (Alloc (InjL Plang.Unit)) main.
+
+  Lemma wp_start p1 p2 p3 :
+    {{{ (Token p1) ∗ beep_ (Token p1) (Token p2) ∗ write_ (Token p2) [(#nv 1)] (Token p3) }}}
       start
-    {{{RET UnitV; P3 }}}.
+    {{{RET UnitV; Token p3 }}}.
   Proof.
     iIntros (Φ) "(Hp1 & #Hbp & #Hwr) HΦ".
-    iDestruct "Hwr" as (p2 p3 R) "(Hp2 & Hwr & Hp3)"; simpl in *.
+    iDestruct "Hwr" as (p2' p3' R) "(Hp2 & Hwr & Hp3)"; simpl in *.
     iDestruct "Hwr" as %[s [Hwr ?]]; simpl in *; simplify_eq.
     iApply (wp_bind (fill [LetInCtx _])).
     iApply (wp_alloc); auto; iNext; iIntros (l) "Hl /=".
     iApply wp_pure_step_later; trivial.
-    iNext. asimpl.
+    iNext.
+    iApply (wp_main _ (P1 ∗ l ↦ InjLV UnitV) (P2 ∗ l ↦ InjLV UnitV)
+              (buffer_token l P3) (l ↦ InjLV UnitV ∗ P3)  with "[Hp1 Hl] [HΦ]")%I.
+
+asimpl.
     iApply (wp_bind (fill [SeqCtx _])).
     iApply (wp_beep with "[Hp1]")%I.
     { by iFrame "#". }
