@@ -44,7 +44,7 @@ To verify, just type `make`.
   server in `chat_server.v` which implements communication over the
   network as IO.
 - `full_erasure.v` Erases the IO specifications from programs where
-  prophecies are erased can have.
+  prophecies are already erased.
 - `lang_fully_erased.v` The programming language fully erased.
 - `petrinet.v` Implements Petri nets in Iris.
 
