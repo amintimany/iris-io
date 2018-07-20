@@ -194,25 +194,7 @@ Section conrete_chat_server.
 
 End conrete_chat_server.
 
-(* Definition make_input_io (tg : ioTag) (μ : Stream val):= *)
-(*   Smap (λ x, (tg, UnitV, x)) μ. *)
-
-(* Definition make_output_io (tg : ioTag) (μ : Stream val):= *)
-(*   Smap (λ x, (tg, x, UnitV)) μ. *)
-
-(* Definition chat_server_io mixer μ1 μ2 μ := *)
-(*   ∃ μwr, *)
-(*     interleaving (make_output_io write_nick1 (Smix mixer μ1 μ2)) *)
-(*                  (make_output_io write_nick2 (Smix mixer μ1 μ2)) μwr ∧ *)
-(*     interleaving (Smix mixer (make_input_io read_nick1 μ1) *)
-(*                        (make_input_io read_nick2 μ2)) μwr μ. *)
-
-(* Definition chat_server_ioSpec mixer μ1 μ2 : ioSpec := *)
-(*   λ l, ∃ μ, chat_server_io mixer μ1 μ2 (append_l_s l μ). *)
-
 Inductive chat_server_petri_places :=
-  CHPP_Start
-| CHPP_input
 | CHPP_input1 (n : nat)
 | CHPP_input2 (n : nat)
 | CHPP_output
@@ -227,205 +209,223 @@ Instance chat_server_petri_placesC : PlacesC :=
   {| Places := chat_server_petri_places |}.
 
 Inductive chat_server_petri μ1 μ2 : PetriNet :=
-| chat_server_petri_start_split :
-    chat_server_petri μ1 μ2 (SplitTr CHPP_Start CHPP_input CHPP_output)
-| chat_server_petri_input_split :
-    chat_server_petri μ1 μ2
-                      (SplitTr CHPP_input (CHPP_input1 0) (CHPP_input2 0))
 | chat_server_petri_output_split mixer :
-    chat_server_petri
-      μ1 μ2 (SplitTr CHPP_output (CHPP_output1 mixer 0) (CHPP_output2 mixer 0))
+    chat_server_petri μ1 μ2
+      (SplitTr CHPP_output (CHPP_output1 mixer 0) (CHPP_output2 mixer 0))
 | chat_server_petri_input1 n :
     chat_server_petri μ1 μ2
-                      (IOTr (CHPP_input1 n) read_nick1 UnitV (Snth n μ1)
-                            (CHPP_input1 (S n)))
+      (IOTr (CHPP_input1 n) read_nick1 UnitV (Snth n μ1)
+            (CHPP_input1 (S n)))
 | chat_server_petri_input2 n :
     chat_server_petri μ1 μ2
-                      (IOTr (CHPP_input2 n) read_nick2 UnitV (Snth n μ2)
-                            (CHPP_input2 (S n)))
+      (IOTr (CHPP_input2 n) read_nick2 UnitV (Snth n μ2)
+            (CHPP_input2 (S n)))
 | chat_server_petri_output1 mixer n :
     chat_server_petri μ1 μ2
-                      (IOTr (CHPP_output1 mixer n) write_nick1
-                            (Snth n (Smix mixer μ1 μ2))
-                            UnitV
-                            (CHPP_output1 mixer (S n)))
+      (IOTr (CHPP_output1 mixer n) write_nick1
+            (Snth n (Smix mixer μ1 μ2))
+            UnitV
+            (CHPP_output1 mixer (S n)))
 | chat_server_petri_output2 mixer n :
     chat_server_petri μ1 μ2
-                      (IOTr (CHPP_output2 mixer n) write_nick2
-                            (Snth n (Smix mixer μ1 μ2))
-                            UnitV
-                            (CHPP_output2 mixer (S n))).
+      (IOTr (CHPP_output2 mixer n) write_nick2
+            (Snth n (Smix mixer μ1 μ2))
+            UnitV
+            (CHPP_output2 mixer (S n))).
 
-Inductive Reachable_Valuation : Valuation → Prop :=
-| ReachableV_Start : Reachable_Valuation (singVAL CHPP_Start)
-| ReachableV_IO :
-    Reachable_Valuation ((singVAL CHPP_input) ⊎ (singVAL CHPP_output))
-| ReachableV_IsO n m :
-    Reachable_Valuation
-      ((singVAL (CHPP_input1 n))
-         ⊎ (singVAL (CHPP_input2 m))
-         ⊎ (singVAL CHPP_output))
-| ReachableV_IOs mixer n m :
-    Reachable_Valuation
-      ((singVAL CHPP_input)
-         ⊎ (singVAL (CHPP_output1 mixer n))
-         ⊎ (singVAL (CHPP_output2 mixer m)))
-| ReachableV_IsOs mixer n1 m1 n2 m2 :
-    Reachable_Valuation
-      ((singVAL (CHPP_input1 n1))
-         ⊎ (singVAL (CHPP_input2 m1))
-         ⊎ (singVAL (CHPP_output1 mixer n2))
-         ⊎ (singVAL (CHPP_output2 mixer m2))).
+Definition V0 :=
+  singVAL (CHPP_input1 0) ⊎ singVAL (CHPP_input2 0) ⊎ singVAL CHPP_output.
 
-(* Lemma chat_server_petri_det_io mixer μ1 μ2 : *)
-(*   (∀ p t v v' q, *)
-(*       chat_server_petri mixer μ1 μ2 (IOTr p t v v' q) → *)
-(*       (∀ t1 v1 v1' q1, chat_server_petri mixer μ1 μ2 (IOTr p t1 v1 v1' q1) → *)
-(*                        t1 = t ∧ v1 = v ∧ v1' = v' ∧ q1 = q) ∧ *)
-(*       (∀ q1 q2, chat_server_petri mixer μ1 μ2 (SplitTr p q1 q2) → False) ∧ *)
-(*       (∀ p2 q, chat_server_petri mixer μ1 μ2 (JoinTr p p2 q) → False)). *)
-(* Proof. *)
-(*   intros ? ? ? ? ? Hp; inversion Hp; clear Hp; subst; (split; [|split]); *)
-(*     intros; *)
-(*     match goal with *)
-(*     | H : chat_server_petri _ _ _ _ |- _ => inversion H; subst; auto *)
-(*     end. *)
-(* Qed. *)
+Inductive Traces1 μ1 μ2 : nat -> nat -> ioSpec :=
+| EmpTR1 i1 i2: Traces1 μ1 μ2 i1 i2 nil
+| Input1TR1 i1 i2 tr:
+  Traces1 μ1 μ2 (S i1) i2 tr ->
+  Traces1 μ1 μ2 i1 i2 ((read_nick1, UnitV, Snth i1 μ1)::tr)
+| Input2TR1 i1 i2 tr:
+  Traces1 μ1 μ2 i1 (S i2) tr ->
+  Traces1 μ1 μ2 i1 i2 ((read_nick2, UnitV, Snth i2 μ2)::tr)
+| Output1TR i1 i2 v tr:
+  Traces1 μ1 μ2 i1 i2 tr ->
+  Traces1 μ1 μ2 i1 i2 ((write_nick1, v, UnitV)::tr)
+| Output2TR i1 i2 v tr:
+  Traces1 μ1 μ2 i1 i2 tr ->
+  Traces1 μ1 μ2 i1 i2 ((write_nick2, v, UnitV)::tr).
 
-(* Lemma chat_server_petri_det_split mixer μ1 μ2 : *)
-(*   (∀ p q1 q2, *)
-(*       chat_server_petri mixer μ1 μ2 (SplitTr p q1 q2) → *)
-(*       (∀ t1 v1 v1' q1, chat_server_petri mixer μ1 μ2 (IOTr p t1 v1 v1' q1) → False) *)
-(*       ∧ (∀ q1' q2', chat_server_petri mixer μ1 μ2 (SplitTr p q1' q2') → *)
-(*                     q1' = q1 ∧ q2' = q2) ∧ *)
-(*       (∀ p2 q, chat_server_petri mixer μ1 μ2 (JoinTr p p2 q) → False)). *)
-(* Proof. *)
-(*   intros ? ? ? Hp; inversion Hp; clear Hp; subst; (split; [|split]); *)
-(*     intros; *)
-(*     match goal with *)
-(*     | H : chat_server_petri _ _ _ _ |- _ => inversion H; subst; auto *)
-(*     end. *)
-(* Qed. *)
+Definition val_of_state i1 i2 (o: option (Stream bool * nat * nat)) : Valuation :=
+  singVAL (CHPP_input1 i1) ⊎ singVAL (CHPP_input2 i2) ⊎
+  match o with
+    None => singVAL CHPP_output
+  | Some (m, o1, o2) => singVAL (CHPP_output1 m o1) ⊎ singVAL (CHPP_output2 m o2)
+  end.
 
-(* Definition chat_server_petri_start_val := *)
-(*   λ p, match p with CHPP_Start => 1 | _ => 0 end. *)
+Arguments val_of_state _ _ /_.
 
-Lemma singVAL_eq p q V : singVAL p ⊎ V = singVAL q → p = q ∧ V = (λ x, 0).
+Lemma ValPlus_cancel V V1 V2: V ⊎ V1 = V ⊎ V2 -> V1 = V2.
 Proof.
   intros Heq.
-  split.
-  - pose proof (equal_f Heq p) as Heq'.
-    revert Heq'. rewrite /singVAL /ValPlus /=.
-    repeat destruct decide; done.
-  - extensionality z.
-    pose proof (equal_f Heq z) as Heq'.
-    pose proof (equal_f Heq p) as Heq''.
-    revert Heq' Heq''. rewrite /singVAL /ValPlus /=.
-    repeat destruct decide; subst; auto with omega; try done.
+  extensionality z.
+  pose proof (equal_f Heq z) as Heq'.
+  unfold ValPlus in Heq'. omega.
 Qed.
 
-Lemma singVAL_eq21 p1 p2 q V :
-  p1 ≠ p2 → singVAL p1 ⊎ singVAL p2 = singVAL q ⊎ V → q = p1 ∨ q = p2.
+Derive Inversion Traces_inv with (∀ x y tr, (Traces x y tr)).
+Derive Inversion CSP_inv with (∀ μ1 μ2 tr, chat_server_petri μ1 μ2 tr).
+
+Lemma Traces_Traces1_aftersplit μ1 μ2 tr:
+  forall i1 i2 m o1 o2,
+  Traces (chat_server_petri μ1 μ2) (val_of_state i1 i2 (Some (m, o1, o2))) tr ->
+  Traces1 μ1 μ2 i1 i2 tr.
 Proof.
-  intros ? Heq.
-  pose proof (equal_f Heq q) as Heq'.
-  revert Heq'. rewrite /singVAL /ValPlus /=.
-  repeat destruct decide; simplify_eq; eauto with lia.
+  induction tr as [|a tr]; first by econstructor.
+  intros i1 i2 m o1 o2 HT.
+  destruct a as [[t v] v'].
+  inversion HT using Traces_inv; try done.
+  - (* IOTr *)
+    intros _ V p t' w w' q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt using CSP_inv; try done; simplify_eq.
+    + intros _ n Hsp; simpl in *.
+      pose proof (equal_f Hvl (CHPP_input1 n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply (IHtr _ _ m o1 o2).
+      rewrite -assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      by rewrite -assoc.
+    + intros _ n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_input2 n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply (IHtr _ _ m o1 o2).
+      rewrite (comm_L _ (_ (CHPP_input1 i1))) in Hvl.
+      rewrite -assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      rewrite (comm_L _ (_ (CHPP_input1 i1))).
+      by rewrite -assoc.
+    + intros _ mixer n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_output1 mixer n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply (IHtr _ _ mixer (S n) o2).
+      rewrite -assoc (comm_L _ (_ (CHPP_input2 i2)))
+                     assoc (comm_L _ (_ (CHPP_input1 i1))) in Hvl.
+      rewrite -!assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      rewrite -assoc (comm_L _ (_ (CHPP_input2 i2)))
+                     assoc (comm_L _ (_ (CHPP_input1 i1))).
+      by rewrite -!assoc.
+    + intros _ mixer n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_output2 mixer n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply (IHtr _ _ mixer o1 (S n)).
+      rewrite -assoc (comm_L _ (_ (CHPP_output1 _ _)))
+                     (assoc _ (_ (CHPP_input2 i2)))
+                     (comm_L _ (_ (CHPP_input2 i2))) assoc
+                     (comm_L _ (_ (CHPP_input1 i1))) in Hvl.
+      rewrite -!assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      rewrite -assoc (comm_L _ (_ (CHPP_output1 _ _)))
+                     (assoc _ (_ (CHPP_input2 i2)))
+                     (comm_L _ (_ (CHPP_input2 i2))) assoc
+                     (comm_L _ (_ (CHPP_input1 i1))).
+      by rewrite -!assoc.
+  - (* SplitTR *)
+    intros _ V p q q' τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt using CSP_inv; try done.
+    intros _ mixer Hsp; simpl in *; simplify_eq.
+    pose proof (equal_f Hvl CHPP_output) as Hvl';
+      unfold singVAL, ValPlus in Hvl';
+      repeat destruct decide; simplify_eq.
+  - (* JoinTR *)
+    intros _ V p p' q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt.
+  - (* NoOpTR *)
+    intros _ V p q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt.
 Qed.
 
-Lemma singVAL_eq12 p q1 q2 V : ¬ singVAL p = singVAL q1 ⊎ singVAL q2 ⊎ V.
+Lemma Traces_Traces1_beforesplit μ1 μ2 tr:
+  forall i1 i2,
+  Traces (chat_server_petri μ1 μ2) (val_of_state i1 i2 None) tr ->
+  Traces1 μ1 μ2 i1 i2 tr.
 Proof.
-  intros Heq.
-  pose proof (equal_f Heq p) as Heq'.
-  pose proof (equal_f Heq q1) as Heq''.
-  pose proof (equal_f Heq q2) as Heq'''.
-  revert Heq' Heq'' Heq'''. rewrite /singVAL /ValPlus /=.
-  repeat (destruct decide; try done); simplify_eq; eauto with lia.
+  induction tr as [|a tr]; first by constructor.
+  intros i1 i2 HT.
+  destruct a as [[t v] v'].
+  inversion HT using Traces_inv; try done.
+  - (* IOTr *)
+    intros _ V p t' w w' q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt using CSP_inv; try done; simplify_eq.
+    + intros _ n Hsp; simpl in *.
+      pose proof (equal_f Hvl (CHPP_input1 n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply IHtr.
+      rewrite -assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      by rewrite -assoc.
+    + intros _ n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_input2 n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+      constructor.
+      apply IHtr.
+      rewrite (comm_L _ (_ (CHPP_input1 i1))) in Hvl.
+      rewrite -assoc in Hvl;
+        apply ValPlus_cancel in Hvl; subst.
+      rewrite (comm_L _ (_ (CHPP_input1 i1))).
+      by rewrite -assoc.
+    + intros _ mixer n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_output1 mixer n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+    + intros _ mixer n Hsp; simpl in *; simplify_eq.
+      pose proof (equal_f Hvl (CHPP_output2 mixer n)) as Hvl';
+        unfold singVAL, ValPlus in Hvl';
+        repeat destruct decide; simplify_eq.
+  - (* SplitTR *)
+    intros _ V p q q' τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt using CSP_inv; try done.
+    intros _ mixer Hsp; simpl in *; simplify_eq.
+    rewrite (comm_L _ _ (_ CHPP_output)) in Hvl.
+    apply ValPlus_cancel in Hvl; simplify_eq.
+    apply (Traces_Traces1_aftersplit _ _ _ i1 i2 mixer 0 0); simpl.
+    by rewrite comm_L.
+  - (* JoinTR *)
+    intros _ V p p' q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt.
+  - (* NoOpTR *)
+    intros _ V p q τ Hpt Htr Hvl Hios; simplify_eq.
+    inversion Hpt.
 Qed.
 
-Lemma singVAL_eq22 p1 p2 q1 q2 V :
-  p1 ≠ p2 →
-  singVAL p1 ⊎ singVAL p2 = singVAL q1 ⊎ singVAL q2 ⊎ V →
-  q1 = p1 ∧ q2 = p2 ∨ q1 = p2 ∧ q2 = p1.
+Lemma ResultDet_Traces1 μ1 μ2 t v v' v'' tr' tr'' tr:
+  forall i1 i2,
+  Traces1 μ1 μ2 i1 i2 (tr ++ (t, v, v') :: tr') ->
+  Traces1 μ1 μ2 i1 i2 (tr ++ (t, v, v'') :: tr'') ->
+  v' = v''.
 Proof.
-  intros ? Heq.
-  pose proof (equal_f Heq p1) as Heq1.
-  pose proof (equal_f Heq q2) as Heq2.
-  pose proof (equal_f Heq q1) as Heq3.
-  pose proof (equal_f Heq q2) as Heq4.
-  revert Heq1 Heq2 Heq3 Heq4. rewrite /singVAL /ValPlus /=.
-  repeat (destruct decide; try done); simplify_eq; eauto with lia.
+  induction tr as [|[[t0 v0] v'0] tr1]; simpl.
+  - intros i1 i2 Hv' Hv''.
+    by destruct t; inversion Hv'; inversion Hv''; simplify_eq.
+- intros i1 i2 Hv' Hv''.
+  destruct t0; inversion Hv'; inversion Hv''; simplify_eq; eapply IHtr1; eauto.
 Qed.
 
-(* Lemma singVAL_eq32 p1 p2 p3 q1 q2 V : *)
-(*   p1 ≠ p2 → *)
-(*   singVAL p1 ⊎ singVAL p2 ⊎ singVAL p3 = singVAL q1 ⊎ singVAL q2 ⊎ V → *)
-(*   (q1 = p1 ∧ q2 = p2) ∨ (q1 = p2 ∧ q2 = p1) ∨ *)
-(*   (q1 = p1 ∧ q2 = p2). *)
-(* Proof. *)
-(*   intros ? Heq. *)
-(*   pose proof (equal_f Heq p1) as Heq1. *)
-(*   pose proof (equal_f Heq q2) as Heq2. *)
-(*   pose proof (equal_f Heq q1) as Heq3. *)
-(*   pose proof (equal_f Heq q2) as Heq4. *)
-(*   revert Heq1 Heq2 Heq3 Heq4. rewrite /singVAL /ValPlus /=. *)
-(*   repeat (destruct decide; try done); simplify_eq; eauto with lia. *)
-(* Qed. *)
-
-
-(* There are so many cases that we need to consider we just admit them
-here. There must be an easier way via some more disciplined lemma to
-prove result-deterministicness that does not involve so many case
-analysis over the transitions and valuations. *)
-(* admitted cases below are intuitively easy! *)
-Lemma chat_server_petri_ResultDet μ1 μ2 V :
-  Reachable_Valuation V →
-  ResultDet (Traces (chat_server_petri μ1 μ2) V).
+Theorem chat_server_petri_ResultDet μ1 μ2 :
+  ResultDet (Traces (chat_server_petri μ1 μ2) V0).
 Proof.
-  intros HV t v v' v'' τ τ' τ'' Hτ.
-  remember (τ ++ (t, v, v') :: τ') as io.
-  revert HV τ t v v' v'' τ' Heqio.
-  induction Hτ as [| ? ? ? ? ? ? ? Hτio | | |] => HV τ1 t1 v1 v1' v1'' τ1' Heqio Hτ''.
-  - by destruct τ1.
-  - inversion HV.
-    + edestruct singVAL_eq; eauto; subst.
-      match goal with
-      | H : chat_server_petri _ _ _ |- _ => inversion H
-      end.
-    + edestruct (singVAL_eq21); eauto; try done; simplify_eq;
-        match goal with
-        | H : chat_server_petri _ _ _ |- _ => inversion H
-        end.
-    + admit.
-    + admit.
-    + admit.
-  - match goal with
-    | H : chat_server_petri _ _ (SplitTr ?p _ _) |- _ =>
-      destruct p; inversion H; simplify_eq
-    end.
-    + inversion HV.
-      * admit.
-      * edestruct singVAL_eq21; eauto; try done.
-      * admit.
-      * admit.
-      * admit.
-    + admit.
-    + inversion HV.
-      * edestruct singVAL_eq; eauto; try done.
-      * edestruct singVAL_eq21; eauto; try done.
-        admit.
-      * admit.
-      * admit.
-      * admit.
-  - match goal with
-        | H : chat_server_petri _ _ (JoinTr ?p _ _) |- _ =>
-          destruct p; inversion H
-        end.
-  - match goal with
-    | H : chat_server_petri _ _ (NoOpTr ?p _) |- _ =>
-      destruct p; inversion H
-    end.
-Admitted.
+  change V0 with (val_of_state 0 0 None).
+  intros ? ? ? ? ? ? ? Hτ1 Hτ2.
+  apply Traces_Traces1_beforesplit in Hτ1.
+  apply Traces_Traces1_beforesplit in Hτ2.
+  eapply ResultDet_Traces1; eauto.
+Qed.
 
 Lemma Recive_from_nick (b : bool)
       `{heapIG Σ} `{inG Σ (authUR (ofe_funUR (λ _ : Places, natUR)))} γ μ1 μ2 :
@@ -492,28 +492,28 @@ Theorem wp_closed_concrete_serverChatRoom
         μ1 μ2 :
   (|={⊤}=> ∃ γio, let _ := make_heapIG γio in
                  |={⊤}=> ∃ _ : petrinetIG Σ,
-     FullIO (Traces (chat_server_petri μ1 μ2)
-                    (singVAL CHPP_Start))
+     FullIO (Traces (chat_server_petri μ1 μ2) V0)
             ∗ WP concrete_serveChatRoom {{ _, False }})%I.
 Proof.
   iIntros "".
-  pose (Traces (chat_server_petri μ1 μ2)
-                (singVAL CHPP_Start)) as ios.
+  pose (Traces (chat_server_petri μ1 μ2) V0) as ios.
   iMod (@own_alloc _ io_monoid _
                    (● Excl' (ios : leibnizC ioSpec) ⋅
                       ◯ Excl' (ios : leibnizC ioSpec))) as (γio) "[HFI HOI]";
     first done.
   iModIntro. iExists _. pose (make_heapIG γio). iFrame.
   iMod (PetriNetInv_alloc with "HOI") as (γpn) "[#HPi HOV]".
-  { apply chat_server_petri_ResultDet; econstructor. }
+  { apply chat_server_petri_ResultDet. }
   pose ({| γPN := γpn; ThePetriNet := chat_server_petri μ1 μ2|}) as PN.
   iModIntro. iExists PN.
-  iAssert (@Token chat_server_petri_placesC _ _ _ CHPP_Start) with "[$HOV]"
-    as "HOS"; first done.
-  iMod (petrinet_split with "[HOS]") as "[HI HO]"; [| by iFrame |].
-  { apply chat_server_petri_start_split. }
-  iMod (petrinet_split with "[HI]") as "[HI1 HI2]"; [| by iFrame |].
-  { apply chat_server_petri_input_split. }
+  rewrite /V0 !ownVAL_split.
+  iDestruct "HOV" as "[[Hi1 Hi2] Ho]".
+  iAssert (@Token chat_server_petri_placesC _ _ _ (CHPP_input1 0)) with "[$Hi1]"
+    as "Hi1"; first done.
+  iAssert (@Token chat_server_petri_placesC _ _ _ (CHPP_input2 0)) with "[$Hi2]"
+    as "Hi2"; first done.
+  iAssert (@Token chat_server_petri_placesC _ _ _ (CHPP_output)) with "[$Ho]"
+    as "Ho"; first done.
   iPoseProof (Recive_from_nick true γpn μ1 μ2) as (r) "[#Hr1 HRFN1]".
   iPoseProof (Recive_from_nick false γpn μ1 μ2) as (s) "[#Hr2 HRFN2]".
   iApply (wp_concrete_serverChatRoom
@@ -539,18 +539,15 @@ Theorem concrete_serverChatRoom_safe :
           concrete_serveChatRoom
           (λ T, ∃ μ1 μ2, (@Traces
                             chat_server_petri_placesC
-                            (chat_server_petri μ1 μ2) (singVAL CHPP_Start)) T).
+                            (chat_server_petri μ1 μ2) V0) T).
 Proof.
   eapply fully_erased_safe_equiv;
     last apply (fully_erased_safe_union concrete_serveChatRoom
          (λ M, ∃ μ1 μ2 : Stream val, M ≡
-                        Traces (chat_server_petri μ1 μ2)
-                                (@singVAL chat_server_petri_placesC
-                                          CHPP_Start))).
+                        Traces (chat_server_petri μ1 μ2) V0)).
   - intros T; split.
     + intros (μ1 & μ2 & ?).
-      exists (λ T, Traces (chat_server_petri μ1 μ2)
-                   (@singVAL chat_server_petri_placesC CHPP_Start) T).
+      exists (λ T, Traces (chat_server_petri μ1 μ2) V0 T).
       split; eauto.
     + intros [M [(μ1 & μ2 & HMeq) HM]]. eexists _, _; by apply HMeq.
   - intros M (μ1 & μ2 & HM).
