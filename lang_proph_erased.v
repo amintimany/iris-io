@@ -30,12 +30,18 @@ Module Plang_erased.
   | EZetaS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       erased_head_step (LetIn e1 e2) σ e2.[e1/] σ []
+  | EGRZetaS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      erased_head_step (GRLetIn e1 e2) σ e2.[e1/] σ []
   | ELamBetaS e1 e2 v2 σ :
       to_val e2 = Some v2 →
       erased_head_step (App (Lam e1) e2) σ e1.[e2/] σ []
   | ESeqS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       erased_head_step (Seq e1 e2) σ e2 σ []
+  | EGRSeqS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      erased_head_step (GRSeq e1 e2) σ e2 σ []
   (* Products *)
   | EFstS e1 v1 e2 v2 σ :
       to_val e1 = Some v1 → to_val e2 = Some v2 →

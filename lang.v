@@ -21,7 +21,9 @@ Module Plang.
   | Rec (e : {bind 2 of expr})
   | Lam (e : {bind expr})
   | LetIn (e : expr) (e : {bind expr})
+  | GRLetIn (e : expr) (e : {bind expr})
   | Seq (e1 e2 : expr)
+  | GRSeq (e1 e2 : expr)
   | App (e1 e2 : expr)
   (* Base Types *)
   | Unit
@@ -148,7 +150,9 @@ Module Plang.
   | AppLCtx (e2 : expr)
   | AppRCtx (v1 : val)
   | LetInCtx (e2 : expr)
+  | GRLetInCtx (e2 : expr)
   | SeqCtx (e2 : expr)
+  | GRSeqCtx (e2 : expr)
   | TAppCtx
   | PairLCtx (e2 : expr)
   | PairRCtx (v1 : val)
@@ -179,7 +183,9 @@ Module Plang.
     | AppLCtx e2 => App e e2
     | AppRCtx v1 => App (of_val v1) e
     | LetInCtx e2 => LetIn e e2
+    | GRLetInCtx e2 => GRLetIn e e2
     | SeqCtx e2 => Seq e e2
+    | GRSeqCtx e2 => GRSeq e e2
     | TAppCtx => TApp e
     | PairLCtx e2 => Pair e e2
     | PairRCtx v1 => Pair (of_val v1) e
@@ -258,12 +264,18 @@ Module Plang.
   | ZetaS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       head_step (LetIn e1 e2) σ e2.[e1/] σ []
+  | GRZetaS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      head_step (GRLetIn e1 e2) σ e2.[e1/] σ []
   | LamBetaS e1 e2 v2 σ :
       to_val e2 = Some v2 →
       head_step (App (Lam e1) e2) σ e1.[e2/] σ []
   | SeqS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       head_step (Seq e1 e2) σ e2 σ []
+  | GRSeqS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      head_step (GRSeq e1 e2) σ e2 σ []
   (* Products *)
   | FstS e1 v1 e2 v2 σ :
       to_val e1 = Some v1 → to_val e2 = Some v2 →

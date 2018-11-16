@@ -25,6 +25,12 @@ Proof.
   - apply elem_of_dom. rewrite lookup_to_gmap option_guard_True; eauto.
 Qed.
 
+Definition erased_safe_tp tp M :=
+  ∀ th2 σ2,
+    rtc (@step PE_lang) (tp, {| EHeap := ∅; EProph := ∅; EioState := M |})
+        (th2, σ2) →
+    ∀ e, e ∈ th2 → AsVal e ∨ reducible e σ2.
+
 Lemma erased_reachable_reachable th1 h1 th2 σ2 M:
   rtc (@step PE_lang) (th1, {| EHeap := h1; EProph := ∅; EioState := M |})
 (th2, σ2) →

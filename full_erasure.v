@@ -31,6 +31,7 @@ Qed.
 Lemma fully_erased_reachable_reachable th1 h1 th2 σ2 (M : ioSpec) :
   prefix_closed M →
   M (FEIO σ2) →
+  erased_safe e M →
   rtc (@step PFE_lang) (th1, {| FEHeap := h1; FEProph := ∅; FEIO := [] |})
       (th2, σ2) →
   rtc (@step PE_lang)
@@ -78,20 +79,10 @@ Proof.
     apply (EIOS t e v v' {| EioState := λ τ, M (FEIO σ1 ++ τ) |}); eauto.
 Qed.
 
-Definition fully_erased_safe e (M : ioSpec) :=
-  ∀ th2 σ2,
-    M (FEIO σ2) →
-    rtc (@step PFE_lang) ([e], {| FEHeap := ∅; FEProph := ∅; FEIO := [] |})
-        (th2, σ2) →
-    ∀ e, e ∈ th2 → AsVal e ∨
-                   (∃ e' σ'' efs,
-                       @language.prim_step PFE_lang e σ2 e' σ'' efs
-                       ∧ ∀ t v v', FEIO σ'' = FEIO σ2 ++ [(t, v, v')] →
-                                   ∃ v'', M (FEIO σ2 ++ [(t, v, v'')])).
-
 Instance fully_erased_safe_impl e :
   Proper ((≡) ==> impl) (fully_erased_safe e).
 Proof.
+  rewrite /fully_erased_safe /IO_reducible /cfg_not_failed /IO_not_failed.
   intros M M' HMM HM th2 σ2 HM' Hrtc e' He'.
   destruct (HM th2 σ2 (proj2 (HMM _) HM') Hrtc e' He') as
       [| (e'' & σ'' & efs & Hstp & Hrd)];
@@ -113,6 +104,7 @@ Lemma fully_erased_safe_union e (F : ioSpec → Prop) :
   (∀ M, F M → fully_erased_safe e M) →
   fully_erased_safe e (λ io, ∃ M, F M ∧ M io).
 Proof.
+  rewrite /fully_erased_safe /IO_reducible /cfg_not_failed /IO_not_failed.
   intros Hfa th2 σ2 [M [HFM HMσ2]] Hrtc e' He'.
   destruct (Hfa M HFM th2 σ2 HMσ2 Hrtc e' He') as
       [?|(e'' & σ'' & efs & Hstp & Hrd)];
@@ -156,6 +148,7 @@ Qed.
 Lemma soundness_io e M :
   prefix_closed M → erased_safe e M → fully_erased_safe e M.
 Proof.
+  rewrite /fully_erased_safe /IO_reducible /cfg_not_failed /IO_not_failed.
   intros Hpc Hs th2 σ2 HMσ2 Hrtc re Hre.
   assert (rtc (@language.step PE_lang)
               ([e], {| EHeap := ∅; EProph := ∅; EioState := M |})
