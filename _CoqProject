@@ -15,3 +15,6 @@ channel.v
 chat_server.v
 chat_server_concrete.v
 buffered_io.v
+lang_noproph.v
+lang_ghost.v
+split_counter.v

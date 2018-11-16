@@ -1,101 +1,24 @@
 From iris_io Require Export lang.
 
-Module Ghostlang.
-  Inductive expr :=
-  | Var (x : var)
-  | Rec (e : {bind 2 of expr})
-  | Lam (e : {bind expr})
-  | LetIn (e : expr) (e : {bind expr})
-  | GRLetIn (e : expr) (e : {bind expr})
-  | Seq (e1 e2 : expr)
-  | GRSeq (e1 e2 : expr)
-  | App (e1 e2 : expr)
-  (* Base Types *)
-  | Unit
-  | Nat (n : nat)
-  | Bool (b : bool)
-  | BinOp (op : binop) (e1 e2 : expr)
-  (* If then else *)
-  | If (e0 e1 e2 : expr)
-  (* Products *)
-  | Pair (e1 e2 : expr)
-  | Fst (e : expr)
-  | Snd (e : expr)
-  (* Sums *)
-  | InjL (e : expr)
-  | InjR (e : expr)
-  | Case (e0 : expr) (e1 : {bind expr}) (e2 : {bind expr})
-  (* Recursive Types *)
-  | Fold (e : expr)
-  | Unfold (e : expr)
-  (* Polymorphic Types *)
-  | TLam (e : expr)
-  | TApp (e : expr)
-  (* Concurrency *)
-  | Fork (e : expr)
-  (* Reference Types *)
-  | Loc (l : loc)
-  | IOtag (t : ioTag)
-  | Alloc (e : expr)
-  | Load (e : expr)
-  | Store (e1 : expr) (e2 : expr)
-  (* Compare and swap used for fine-grained concurrency *)
-  | CAS (e0 : expr) (e1 : expr) (e2 : expr)
-  (* Instrumenting Prophecies *)
-  | Pr (l : loc)
-  | Create_Pr
-  | Assign_Pr (e1 e2 : expr)
-  (* Random bit *)
-  | Rand
-  (* I/O *)
-  | IO (e1 e2 : expr).
-
-  Fixpoint instr(e: expr): Plang.expr :=
-    match e with
-      Var x => Plang.Var x
-    | Rec e => Plang.Rec (instr e)
-    | Lam e => Plang.Lam (instr e)
-    | LetIn e1 e2 => Plang.LetIn (instr e1) (instr e2)
-    | GRLetIn e1 e2 => Plang.LetIn (instr e1) (instr e2)
-    | Seq e1 e2 => Plang.Seq (instr e1) (instr e2)
-    | GRSeq e1 e2 => Plang.Seq (instr e1) (instr e2)
-    | App e1 e2 => Plang.App (instr e1) (instr e2)
-    | Unit => Plang.Unit
-    | Nat n => Plang.Nat n
-    | Bool b => Plang.Bool b
-    | BinOp op e1 e2 => Plang.BinOp op (instr e1) (instr e2)
-    | If e0 e1 e2 => Plang.If (instr e0) (instr e1) (instr e2)
-    | Pair e1 e2 => Plang.Pair (instr e1) (instr e2)
-    | Fst e => Plang.Fst (instr e)
-    | Snd e => Plang.Snd (instr e)
-    | InjL e => Plang.InjL (instr e)
-    | InjR e => Plang.InjR (instr e)
-    | Case e0 e1 e2 => Plang.Case (instr e0) (instr e1) (instr e2)
-    | Fold e => Plang.Fold (instr e)
-    | Unfold e => Plang.Unfold (instr e)
-    | TLam e => Plang.TLam (instr e)
-    | TApp e => Plang.TApp (instr e)
-    | Fork e => Plang.Fork (instr e)
-    | Loc l => Plang.Loc l
-    | IOtag t => Plang.IOtag t
-    | Alloc e => Plang.Alloc (instr e)
-    | Load e => Plang.Load (instr e)
-    | Store e1 e2 => Plang.Store (instr e1) (instr e2)
-    | CAS e0 e1 e2 => Plang.CAS (instr e0) (instr e1) (instr e2)
-    | Pr l => Plang.Pr l
-    | Create_Pr => Plang.Create_Pr
-    | Assign_Pr e1 e2 => Plang.Assign_Pr (instr e1) (instr e2)
-    | Rand => Plang.Rand
-    | IO e1 e2 => Plang.IO (instr e1) (instr e2)
-    end.
-
-  Fixpoint ghost_ok(e: expr): Prop :=
-    match e with
-    | Var x => True
-    | Create_Pr => True
-    | Assign_Pr e1 e2 => ghost_ok e1 /\ ghost_ok e2
-    | _ => False
-    end.
+Fixpoint ghost_ok(e: expr): Prop :=
+  match e with
+  | Var x => True
+  | Unit => True
+  | Bool b => True
+  | Nat n => True
+  | Pr p => True
+  | Loc l => True
+  | Rec e => True
+  | Lam e => True
+  | TLam e => True
+  | Pair e1 e2 => ghost_ok e1 /\ ghost_ok e2
+  | InjL e => ghost_ok e
+  | InjR e => ghost_ok e
+  | Fold e => ghost_ok e
+  | Create_Pr => True
+  | Assign_Pr e1 e2 => ghost_ok e1 /\ ghost_ok e2
+  | _ => False
+  end.
 
   Inductive var_erases_to: list bool -> var -> var -> Prop :=
   | var_erases_to_real_O gs:
@@ -215,5 +138,3 @@ Module Ghostlang.
     erases_to gs e2 e2' ->
     erases_to gs (IO e1 e2) (Plang.IO e1' e2')
   .
-
-End Ghostlang.

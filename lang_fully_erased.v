@@ -30,12 +30,18 @@ Module Plang_fully_erased.
   | FEZetaS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       fully_erased_head_step (LetIn e1 e2) σ e2.[e1/] σ []
+  | FEGRZetaS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      fully_erased_head_step (GRLetIn e1 e2) σ e2.[e1/] σ []
   | FELamBetaS e1 e2 v2 σ :
       to_val e2 = Some v2 →
       fully_erased_head_step (App (Lam e1) e2) σ e1.[e2/] σ []
   | FESeqS e1 e2 v1 σ :
       to_val e1 = Some v1 →
       fully_erased_head_step (Seq e1 e2) σ e2 σ []
+  | FEGRSeqS e1 e2 v1 σ :
+      to_val e1 = Some v1 →
+      fully_erased_head_step (GRSeq e1 e2) σ e2 σ []
   (* Products *)
   | FEFstS e1 v1 e2 v2 σ :
       to_val e1 = Some v1 → to_val e2 = Some v2 →
@@ -91,9 +97,9 @@ Module Plang_fully_erased.
   | FECreate_PrS σ :
       fully_erased_head_step Create_Pr σ (Pr (fresh (FEProph σ)))
                        (update_FEproph σ ({[fresh (FEProph σ)]} ∪ (FEProph σ))) []
-  | FEAssignS v l e σ :
-     l ∈ (FEProph σ) → to_val e = Some v →
-     fully_erased_head_step (Assign_Pr (Pr l) e) σ Unit σ []
+  | FEAssignS v v' e e' σ :
+     to_val e = Some v → to_val e' = Some v' →
+     fully_erased_head_step (Assign_Pr e e') σ Unit σ []
   | FERandS b σ : fully_erased_head_step Rand σ (Bool b) σ []
   | FEIOS t e v v' σ : to_val e = Some v →
                     fully_erased_head_step (IO (IOtag t) e) σ (of_val v')
@@ -134,3 +140,21 @@ Canonical Structure PFE_lang :=
   LanguageOfEctx PFE_ectx_lang.
 
 Export Plang_fully_erased.
+
+Definition IO_reducible M e σ :=
+  ∃ e' σ'' efs,
+    @language.prim_step PFE_lang e σ e' σ'' efs
+    ∧ ∀ t v v', FEIO σ'' = FEIO σ ++ [(t, v, v')] →
+                ∃ v'', M (FEIO σ ++ [(t, v, v'')]).
+
+Definition IO_not_failed M e σ := AsVal e ∨ IO_reducible M e σ.
+
+Definition cfg_not_failed M (th : list expr) σ :=
+  ∀ e, e ∈ th → IO_not_failed M e σ.
+
+Definition fully_erased_safe e (M : ioSpec) :=
+  ∀ th2 σ2,
+    M (FEIO σ2) →
+    rtc (@step PFE_lang) ([e], {| FEHeap := ∅; FEProph := ∅; FEIO := [] |})
+        (th2, σ2) → cfg_not_failed M th2 σ2.
+
