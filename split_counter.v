@@ -44,42 +44,6 @@ Section counter.
 
   Implicit Types split_name : (gname * (gname * gname)).
 
-  (* Fixpoint of_Readers_rec (M : list (gname * nat)) i : *)
-  (*   gmap nat (excl (leibnizC (gname * nat))) := *)
-  (*   match M with *)
-  (*   | [] => ∅ *)
-  (*   | r :: M' => {[i := Excl r]} ⋅ (of_Readers_rec M' (S i)) *)
-  (*   end. *)
-
-  (* Lemma of_Readers_dom M i n : n ∈ dom (gset _) (of_Readers_rec M i) → i ≤ n. *)
-  (* Proof. *)
-  (*   revert i; induction M => i; *)
-  (*   rewrite /= ?dom_empty; first done. *)
-  (*   rewrite dom_op elem_of_union dom_singleton elem_of_singleton. *)
-  (*   intros [Hn|Hn]; subst; auto. *)
-  (*   cut (S i ≤ n); first omega; auto. *)
-  (* Qed. *)
-
-  (* Lemma of_Readers_dom' M i n : *)
-  (*   n ∈ dom (gset _) (of_Readers_rec M i) → n < i + length M. *)
-  (* Proof. *)
-  (*   revert i; induction M => i; *)
-  (*   rewrite /= ?dom_empty; first done. *)
-  (*   rewrite dom_op elem_of_union dom_singleton elem_of_singleton. *)
-  (*   intros [Hn|Hn]; subst; auto with omega. *)
-  (*   cut (n < S i + length M); first omega; auto. *)
-  (* Qed. *)
-
-  (* Lemma of_Readers_app M N i : *)
-  (*   of_Readers_rec (M ++ N) i = (of_Readers_rec N (i + length M)) ⋅ (of_Readers_rec M i). *)
-  (* Proof. *)
-  (*   revert N i. *)
-  (*   induction M => N i. *)
-  (*   - by rewrite /= right_id_L; replace (i + 0) with i by omega. *)
-  (*   - rewrite /= IHM. replace (S i + length M) with (i + S (length M)) by omega. *)
-  (*     rewrite !assoc_L. f_equal. rewrite (comm_L op) //. *)
-  (* Qed. *)
-
   Definition of_Readers (M : gmap positive (gname * nat)) :
     gmap positive (excl (leibnizC (gname * nat))) :=
     (λ r, Excl (r)) <$> M.
@@ -97,6 +61,44 @@ Section counter.
   Definition fullRight split_name n := own split_name.2.2 (● n).
 
   Definition fragRight split_name n := own split_name.2.2 (◯ n).
+
+  Lemma update_fullLeft split_name n m :
+    n ≤ m →
+    fullLeft split_name n ==∗ fullLeft split_name m ∗ fragLeft split_name m.
+  Proof.
+    iIntros (Hnm) "Ho".
+    iMod (own_update (A := authUR mnatUR) _ _ (● m ⋅ ◯ m) with "Ho") as "H";
+    first by eapply (auth_update_alloc (A := mnatUR)), mnat_local_update.
+    by rewrite own_op; iDestruct "H" as "[$ $]".
+  Qed.
+
+  Lemma update_fullRight split_name n m :
+    n ≤ m →
+    fullRight split_name n ==∗ fullRight split_name m ∗ fragRight split_name m.
+  Proof.
+    iIntros (Hnm) "Ho".
+    iMod (own_update (A := authUR mnatUR) _ _ (● m ⋅ ◯ m) with "Ho") as "H";
+    first by eapply (auth_update_alloc (A := mnatUR)), mnat_local_update.
+    by rewrite own_op; iDestruct "H" as "[$ $]".
+  Qed.
+
+  Lemma left_frag_less split_name n m :
+    fullLeft split_name n -∗ fragLeft split_name m -∗ ⌜m ≤ n⌝.
+  Proof.
+    iIntros "H1 H2".
+    iDestruct (own_valid_2 with "H1 H2") as
+        %[Hrv%mnat_included _]%auth_valid_discrete; simpl in *.
+    rewrite -> left_id_L in Hrv; last typeclasses eauto; trivial.
+  Qed.
+
+  Lemma right_frag_less split_name n m :
+    fullRight split_name n -∗ fragRight split_name m -∗ ⌜m ≤ n⌝.
+  Proof.
+    iIntros "H1 H2".
+    iDestruct (own_valid_2 with "H1 H2") as
+        %[Hrv%mnat_included _]%auth_valid_discrete; simpl in *.
+    rewrite -> left_id_L in Hrv; last typeclasses eauto; trivial.
+  Qed.
 
   Definition except_counterN := ⊤ ∖ nclose counterN.
   Lemma except_counterN_eq : except_counterN = ⊤ ∖ nclose counterN.
@@ -120,6 +122,60 @@ Section counter.
   Definition Counter split_name (c : val) (I : nat → iProp Σ) : iProp Σ:=
   (∃ l r, ⌜c = PairV (LocV l) (LocV r)⌝ ∗ inv counterN (CounterInv split_name l r I))%I.
 
+  Lemma of_Readers_alloc split_name M γ n :
+    ownReaders split_name M ==∗
+    ∃ i, ⌜i ∉ dom (gset _) M⌝ ∗
+           ownReaders split_name (<[i := (γ, n)]>M) ∗ ownReader split_name i γ n.
+  Proof.
+    iIntros "HM".
+    set (fresh (dom (gset _) M)) as i.
+    iMod (@own_update _ _ _ _ _ (● (of_Readers (<[ i := (γ, n)]>M)) ⋅
+                                   ◯ ({[i := Excl (γ, n)]}))
+            with "HM") as "[? ?]".
+    { apply auth_update_alloc.
+      rewrite /of_Readers fmap_insert /=.
+      apply @alloc_singleton_local_update; last done.
+      eapply (not_elem_of_dom (D := gset positive)).
+      rewrite -> dom_fmap_L.
+      apply is_fresh. }
+    iModIntro; iExists _; iFrame.
+    iPureIntro. apply is_fresh.
+  Qed.
+
+  Lemma of_Readers_dealloc split_name M i γ n :
+    ownReaders split_name M -∗ ownReader split_name i γ n ==∗
+    ownReaders split_name (delete i M).
+  Proof.
+    iIntros "HM Hi".
+    iDestruct (own_valid_2 with "HM Hi") as %[HI HIvl]%auth_valid_discrete_2.
+    specialize (HIvl i).
+    apply @singleton_included in HI.
+    destruct HI as [y [Hy1%leibniz_equiv Hy2]].
+    rewrite Hy1 in HIvl. destruct y; last done.
+    apply @Excl_included, leibniz_equiv in Hy2; subst.
+    iCombine "HM" "Hi" as "HMi".
+    iMod (@own_update _ _ _ _ _ (● (of_Readers (delete i M))) with "HMi")
+      as "$"; auto.
+    apply auth_update_dealloc.
+    rewrite /of_Readers fmap_delete.
+    apply @delete_singleton_local_update; typeclasses eauto.
+  Qed.
+
+  Lemma in_of_Readers split_name M i γ n :
+    ownReaders split_name M -∗ ownReader split_name i γ n -∗
+               ⌜M !! i = Some (γ, n)⌝.
+  Proof.
+    iIntros "HM Hi".
+    iDestruct (own_valid_2 with "HM Hi") as %[HI HIvl]%auth_valid_discrete_2.
+    iPureIntro.
+    specialize (HIvl i).
+    apply @singleton_included in HI.
+    destruct HI as [y [Hy1%leibniz_equiv Hy2]].
+    rewrite Hy1 in HIvl. destruct y; last done.
+    apply @Excl_included, leibniz_equiv in Hy2; subst.
+    rewrite /of_Readers lookup_fmap in Hy1; destruct (M !!i); by inversion Hy1.
+  Qed.
+
   Theorem wp_create_counter I :
     {{{I 0}}} App create_counter Unit {{{v split_name, RET v; Counter split_name v I}}}.
   Proof.
@@ -140,6 +196,27 @@ Section counter.
                        /=; iFrame. }
     iApply wp_value.
     iApply "HF". iExists _, _; eauto.
+  Qed.
+
+  Lemma big_sepM_update `{!invG Σ} `{!EqDecision K} `{!Countable K}
+        E (A : Type) (Φ Ψ : K → A → iProp Σ) (m : gmap K A) P :
+    □ (∀ i x, P -∗ Φ i x ={E}=∗ P ∗ Ψ i x) -∗
+      P -∗ ([∗ map] i ↦ x ∈ m, Φ i x) ={E}=∗ P ∗ [∗ map] i ↦ x ∈ m, Ψ i x.
+  Proof.
+    iIntros "#Hupd HP Hb".
+    rewrite -(map_of_to_list m).
+    pose proof (NoDup_fst_map_to_list m) as Hm.
+    iInduction (map_to_list m) as [|[i x] m'] "IH" forall (Hm).
+    - rewrite !big_sepM_empty; eauto.
+    - rewrite map_of_list_cons.
+      assert (map_of_list (M := gmap K A) m' !! i = None).
+      { apply not_elem_of_map_of_list_1. by apply NoDup_cons_11 in Hm. }
+      rewrite !big_sepM_insert //.
+      iDestruct "Hb" as "[HΦ Hb]".
+      iMod ("Hupd" with "HP HΦ") as "[HP $]".
+      iApply ("IH" with "[] HP [$]").
+      iPureIntro.
+      eapply NoDup_cons_12; eauto.
   Qed.
 
   Theorem wp_incr_left split_name c I Q :
@@ -172,19 +249,16 @@ Section counter.
       iAssert (I (lv' + rv) ={⊤ ∖ ↑counterN}=∗ I (lv' + rv) ∗
                [∗ map] r ∈ M, reader_inv r ((lv' + 1) + rv) I)%I
         with "[Hri]" as "Hri'".
-      { (* iIntros "HI". *)
-        (* iInduction M as [|x M] "IHM"; simpl; first by iFrame. *)
-        (* iDestruct "Hri" as "[Hx HM]". iDestruct "Hx" as (ψ) "[Hψ Hx]". *)
-        (* iMod ("IHM" with "HM HI") as "[HI $]". *)
-        (* rewrite /reader_inv /=. *)
-        (* repeat destruct decide; simpl; try (by iFrame; eauto with omega). *)
-        (* replace (x.2) with (lv' + rv) by omega. *)
-        (* rewrite !except_counterN_eq. *)
-        (* iMod ("Hx" with "HI") as "[Hx $]"; eauto. *)
-        admit. }
-      iMod (own_update _ _ (● (lv' + 1 : mnatUR) ⋅ ◯ (lv' + 1 : mnatUR)) with "Hlv") as "Hlv".
-      { apply auth_update_alloc. admit. }
-      iDestruct "Hlv" as "[Hlv _]".
+      { iIntros "HI".
+        iMod (@big_sepM_update with "[] HI Hri") as "[$ $]"; eauto.
+        iAlways. iIntros (_ x) "HI Hx". iDestruct "Hx" as (ψ) "[Hψ Hx]".
+        rewrite /reader_inv /=.
+        repeat destruct decide; simpl; try (by iFrame; eauto with omega).
+        replace (x.2) with (lv' + rv) by omega.
+        rewrite !except_counterN_eq.
+        iMod ("Hx" with "HI") as "[Hx $]"; eauto. }
+      iMod (update_fullLeft _ _ (lv' + 1) with "Hlv") as "[Hlv _]";
+        auto with omega.
       iMod ("Hri'" with "HI") as "[HI Hri]".
       rewrite !except_counterN_eq.
       iMod ("Hvs" with "HI") as "[HI HQ]".
@@ -200,7 +274,64 @@ Section counter.
       iModIntro.
       iApply wp_pure_step_later; auto. iNext.
       iApply ("IH" with "Hvs"); eauto.
-  Admitted.
+  Qed.
+
+  Theorem wp_incr_right split_name c I Q :
+    {{{Counter split_name c I ∗ ∀ v, I v ={except_counterN}=∗ I (v +1) ∗ Q}}}
+      App incr_right (of_val c)
+    {{{RET UnitV; Q}}}.
+  Proof.
+    iIntros (F) "[#HInv Hvs] HF". iDestruct "HInv" as (l r ->) "HInv".
+    iApply wp_pure_step_later; auto. iNext. asimpl.
+    iApply (wp_bind (fill [AppRCtx (RecV _)])); simpl.
+    iApply wp_pure_step_later; auto. iNext.
+    iApply wp_value; simpl.
+    iLöb as "IH".
+    iApply wp_pure_step_later; auto. iNext. asimpl.
+    iApply (wp_bind (fill [LetInCtx _])); simpl.
+    iInv counterN as (lv rv M) "(Hl & Hr & HI & HM & Hri)" "Hcl".
+    iApply (wp_load with "Hr"). iNext. iIntros "Hr".
+    iMod ("Hcl" with "[Hl Hr HI HM Hri]") as "_".
+    { iNext; iExists _, _, _; iFrame. }
+    iModIntro.
+    iApply wp_pure_step_later; auto. iNext.
+    iApply (wp_bind (fill [IfCtx _ _])); simpl.
+    iApply (wp_bind (fill [CasRCtx (LocV _) (NatV _)])); simpl.
+    iApply wp_pure_step_later; auto. iNext.
+    iApply wp_value; simpl.
+    clear lv M.
+    iInv counterN as (lv rv' M) "(Hl & Hr & Hlv & Hrv & HI & HM & Hri)" "Hcl".
+    destruct (decide (rv = rv')); first subst.
+    - iApply (wp_cas_suc with "Hr"); iNext; iIntros "Hr".
+      iAssert (I (lv + rv') ={⊤ ∖ ↑counterN}=∗ I (lv + rv') ∗
+               [∗ map] r ∈ M, reader_inv r (lv + (rv' + 1)) I)%I
+        with "[Hri]" as "Hri'".
+      { iIntros "HI".
+        iMod (@big_sepM_update with "[] HI Hri") as "[$ $]"; eauto.
+        iAlways. iIntros (_ x) "HI Hx". iDestruct "Hx" as (ψ) "[Hψ Hx]".
+        rewrite /reader_inv /=.
+        repeat destruct decide; simpl; try (by iFrame; eauto with omega).
+        replace (x.2) with (lv + rv') by omega.
+        rewrite !except_counterN_eq.
+        iMod ("Hx" with "HI") as "[Hx $]"; eauto. }
+      iMod (update_fullRight _ _ (rv' + 1) with "Hrv") as "[Hrv _]";
+        auto with omega.
+      iMod ("Hri'" with "HI") as "[HI Hri]".
+      rewrite !except_counterN_eq.
+      iMod ("Hvs" with "HI") as "[HI HQ]".
+      iMod ("Hcl" with "[Hl Hr Hlv Hrv HI HM Hri]") as "_".
+      { replace (lv + rv' + 1) with (lv + (rv' + 1)) by omega.
+        iNext; iExists _, _, _; iFrame. }
+      iModIntro.
+      iApply wp_pure_step_later; auto. iNext.
+      by iApply wp_value; iApply "HF".
+    - iApply (wp_cas_fail with "Hr"); first congruence; iNext; iIntros "Hr".
+      iMod ("Hcl" with "[Hl Hr Hlv Hrv HI HM Hri]") as "_".
+      { iNext; iExists _, _, _; iFrame. }
+      iModIntro.
+      iApply wp_pure_step_later; auto. iNext.
+      iApply ("IH" with "Hvs"); eauto.
+  Qed.
 
   Theorem wp_read split_name c I ψ :
     {{{Counter split_name c I ∗ ∀ v, I v ={except_counterN}=∗ ψ v ∗ I v}}}
@@ -222,40 +353,17 @@ Section counter.
     iInv counterN as (lv rv M) "(Hl & Hr & Hlv & Hrv & HI & HM & Hri)" "Hcl".
     iApply (wp_load with "Hl"). iNext. iIntros "Hl".
     iMod (saved_pred_alloc ψ) as (γ) "#Hψ".
-    iMod (@own_update _ _ _ _ _ (● (of_Readers (<[fresh (dom (gset _) M) := (γ, lv + max n rv)]>M)) ⋅
-                                   ◯ ({[fresh (dom (gset _) M) := Excl (γ, lv + max n rv)]}))
-            with "HM") as "HM".
-    { apply auth_update_alloc.
-      rewrite /of_Readers fmap_insert /=.
-      apply @alloc_singleton_local_update; last done.
-      eapply (not_elem_of_dom (D := gset positive)).
-      rewrite -> dom_fmap_L.
-      apply is_fresh. }
-    iDestruct "HM" as "[HM Hreader]".
+    iMod (of_Readers_alloc _ _ γ (lv + max n rv) with "HM")
+      as (m Hm) "[HM Hreader]".
     iAssert (reader_inv (γ, lv + max n rv) (lv + rv) I)%I with "[Hvs]" as "Hrinv".
     { rewrite /reader_inv /=; destruct decide; try lia.
       iExists _; iFrame "#". iApply "Hvs". }
-    iMod (@own_update _ _ _ _ _ (● rv ⋅ ◯ rv) with "Hrv") as "Hrv".
-    { apply (auth_update_alloc).
-      cut ((rv, ε) ~l~> (max rv rv, max rv ε));
-        first replace (max rv rv) with rv by (by rewrite Nat.max_id);
-        first replace (max rv ε) with rv by (by rewrite PeanoNat.Nat.max_0_r);
-        trivial.
-      apply (@op_local_update mnatUR) => ?. admit. }
-    iDestruct "Hrv" as "[Hrv Hrvfrag]".
-    iMod (@own_update _ _ _ _ _ (● lv ⋅ ◯ lv) with "Hlv") as "Hlv".
-    { apply (auth_update_alloc).
-      cut ((lv, ε) ~l~> (max lv lv, max lv ε));
-        first replace (max lv lv) with lv by (by rewrite Nat.max_id);
-        first replace (max lv ε) with lv by (by rewrite PeanoNat.Nat.max_0_r);
-        trivial.
-      apply (@op_local_update mnatUR) => ?. admit. }
-    iDestruct "Hlv" as "[Hlv Hlvfrag]".
+    iMod (update_fullRight _ rv rv with "Hrv") as "[Hrv Hrvfrag]"; auto.
+    iMod (update_fullLeft _ lv lv with "Hlv") as "[Hlv Hlvfrag]"; auto.
     iMod ("Hcl" with "[Hl Hr Hlv Hrv HI HM Hri Hrinv]") as "_".
     { iNext; iExists _, _, (<[_ := _]>M); iFrame.
       rewrite big_sepM_insert; first by iFrame.
-      eapply (not_elem_of_dom (D := gset positive)).
-      apply is_fresh. }
+      eapply (not_elem_of_dom (D := gset positive)); trivial. }
     iModIntro.
     iApply wp_pure_step_later; auto. iNext.
     iApply (wp_bind (fill [LetInCtx _])); simpl.
@@ -264,22 +372,12 @@ Section counter.
     iApply wp_value; simpl.
     iInv counterN as (lv' rv' M') "(Hl & Hr & Hlv & Hrv & HI & HM & Hri)" "Hcl".
     iApply (wp_load with "Hr"). iNext. iIntros "Hr".
-    iDestruct (own_valid_2 with "Hrvfrag Hrv") as
-        %[Hrv%mnat_included _]%auth_valid_discrete; simpl in *.
-    rewrite -> right_id_L in Hrv; last typeclasses eauto.
-    iDestruct (own_valid_2 with "Hlvfrag Hlv") as
-        %[Hlv%mnat_included _]%auth_valid_discrete; simpl in *.
-    rewrite -> right_id_L in Hlv; last typeclasses eauto.
-    set (m := fresh (dom (gset positive) M)).
-    iDestruct (own_valid_2 with "Hreader HM") as %[Hlv' _]%auth_valid_discrete.
-    rewrite (big_sepM_delete _ M' m (γ, lv + n `max` rv)); last first.
-    { admit. }
+    iDestruct (left_frag_less with "Hlv Hlvfrag") as %Hlv.
+    iDestruct (right_frag_less with "Hrv Hrvfrag") as %Hrv.
+    iDestruct (in_of_Readers with "HM Hreader") as %Hrd.
+    rewrite (big_sepM_delete _ M' m (γ, lv + n `max` rv)) //.
+    iMod (of_Readers_dealloc with "HM Hreader") as "HM".
     iDestruct "Hri" as "[Hm Hri]".
-    iCombine "HM" "Hreader" as "HM".
-    iMod (@own_update _ _ _ _ _ (● (of_Readers (delete m M'))) with "HM") as "HM".
-    { apply auth_update_dealloc.
-      rewrite /of_Readers fmap_delete.
-      apply @delete_singleton_local_update; apply _. }
     iDestruct "Hm" as (ψ') "[#Hψ' Hm]"; simpl.
     iDestruct (saved_pred_agree _ _ _ (lv + n `max` rv) with "Hψ Hψ'") as "Hψeq".
     destruct decide.
@@ -323,4 +421,4 @@ Section counter.
         { iExists (Sconst (NatV 0)); iPureIntro. by exists rv'. }
         iNext.
         iIntros "[Heq _]". iDestruct "Heq" as %Heq. rewrite Hμ in Heq; simplify_eq.
-  Admitted.
+Qed.
