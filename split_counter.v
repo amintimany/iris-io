@@ -1,4 +1,4 @@
-From iris.algebra Require Export auth gmap excl big_op.
+From iris.algebra Require Export frac auth gmap excl big_op.
 From iris.base_logic.lib Require Export saved_prop.
 From iris.program_logic Require Export weakestpre lifting.
 From iris.proofmode Require Import tactics.
@@ -29,18 +29,19 @@ Definition read :=
 
 Class SplitIG Σ := splitIG {
    split_inG :> inG Σ (authUR (gmapUR positive (exclR (leibnizC (gname * nat)))));
+   split_svp :> savedPredG Σ nat;
    split_monotone_inG :> inG Σ (authUR (mnatUR));
 }.
 
 Definition splitΣ :=
   #[GFunctor (authUR (gmapUR positive (exclR (leibnizC (gname * nat)))));
-      GFunctor (authUR (mnatUR))].
+      GFunctor (authUR (mnatUR)); savedAnythingΣ (nat -c> ▶ ∙)].
 
 Global Instance subG_splitΣ Σ : subG splitΣ Σ → SplitIG Σ.
 Proof. solve_inG. Qed.
 
 Section counter.
-  Context `{SplitIG Σ, heapIG Σ, savedPredG Σ nat}.
+  Context `{SplitIG Σ, heapIG Σ}.
 
   Implicit Types split_name : (gname * (gname * gname)).
 
@@ -424,3 +425,210 @@ Section counter.
 Qed.
 
 End counter.
+
+Class ParIG Σ := parIG {
+   par_excl_inG :> inG Σ (exclR unitR);
+}.
+
+Definition parΣ := #[GFunctor (exclR unitR)].
+
+Global Instance subG_parΣ Σ : subG parΣ Σ → ParIG Σ.
+Proof. solve_inG. Qed.
+
+Section par.
+  Context `{ParIG Σ, heapIG Σ}.
+
+  Definition par e1 e2 :=
+    LetIn (Alloc (InjL Unit))
+          (Seq (Fork (LetIn e1.[ren (+1)] (Store (Var 1) (InjR (Var 0)))))
+               (App (Rec
+                       (Case (Load (Var 2))
+                             (App (Var 1) (Var 2))
+                             (Pair (Var 0) (Var 2)))) e2.[ren (+1)])
+          ).
+
+  Definition parN := nroot .@ "par".
+
+  Lemma wp_par E e1 e2 Ψ1 Ψ2 :
+    nclose parN ⊆ E →
+    {{{WP e1 @ E {{Ψ1}} ∗ WP e2 @ E {{Ψ2}} }}}
+      par e1 e2 @ E {{{v1 v2, RET (PairV v1 v2); Ψ1 v1 ∗ Ψ2 v2}}}.
+  Proof.
+    iIntros (HE F) "[H1 H2] HF".
+    iMod (own_alloc (Excl tt)) as (γ) "He"; first done.
+    iApply (wp_bind (fill [LetInCtx _])); simpl.
+    iApply wp_alloc; auto.
+    iNext. iIntros (l) "Hl".
+    iApply wp_pure_step_later; auto. iNext. asimpl.
+    iMod (inv_alloc
+            parN _
+            (l ↦ InjLV UnitV ∨ ∃ v1, l ↦ InjRV v1 ∗ (own γ (Excl ()) ∨ Ψ1 v1))
+         with "[Hl]")%I as "#HI"; eauto.
+    iApply (wp_bind (fill [SeqCtx _])); simpl.
+    iApply wp_fork; iSplitL "H2 He HF".
+    - iNext. iModIntro.
+      iApply wp_pure_step_later; auto. iNext.
+      iApply (wp_bind (fill [AppRCtx (RecV _)])); simpl.
+      iApply wp_wand_l; iSplitR "H2"; last eauto.
+      iIntros (v2) "Hv2".
+      iLöb as "IH".
+      iApply wp_pure_step_later; auto. iNext. asimpl.
+      iApply (wp_bind (fill [CaseCtx _ _])); simpl.
+      iInv parN as "HIb" "Hcl".
+      iDestruct "HIb" as "[Hl | Hr]".
+      + iApply (wp_load with "Hl"). iNext. iIntros "Hl".
+        iMod ("Hcl" with "[Hl]") as "_"; eauto.
+        iModIntro.
+        iApply wp_pure_step_later; auto. iNext. asimpl.
+        iApply ("IH" with "He HF Hv2").
+      + iDestruct "Hr" as (v1)  "[Hr Hs]".
+        iApply (wp_load with "Hr"). iNext. iIntros "Hr".
+        iDestruct "Hs" as "[Hs|Hs]".
+        { iDestruct (own_valid_2 with "He Hs") as %?; done. }
+        iMod ("Hcl" with "[Hr He]") as "_".
+        { iNext; iRight. iExists _; iFrame. }
+        iModIntro. simpl.
+        iApply wp_pure_step_later; auto. iNext. asimpl.
+        iApply wp_value. iApply "HF"; iFrame.
+    - iNext.
+      iApply (wp_bind (fill [LetInCtx _])); simpl.
+      iApply wp_wand_l; iSplitR "H1"; last first.
+      { iApply wp_mask_mono; eauto. }
+      iIntros (v2) "Hv2".
+      iApply wp_pure_step_later; auto. iNext. asimpl.
+      iInv parN as "HIb" "Hcl".
+      iDestruct "HIb" as "[Hl | Hr]".
+      + iApply (wp_store with "Hl"). iNext. iIntros "Hl".
+        iApply "Hcl".
+        iNext; iRight. iExists _; iFrame.
+      + iDestruct "Hr" as (w) "[Hr _]".
+        iApply (wp_store with "Hr"). iNext. iIntros "Hr".
+        iApply "Hcl".
+        iNext; iRight. iExists _; iFrame.
+  Qed.
+
+End par.
+
+
+Lemma par_subst f e1 e2: (par e1 e2).[f] = par e1.[f] e2.[f].
+Proof. by rewrite /par; asimpl. Qed.
+
+Hint Rewrite par_subst : autosubst.
+
+Typeclasses Opaque par.
+Global Opaque par.
+
+Lemma create_counter_subst f: create_counter.[f] = create_counter.
+Proof. by asimpl. Qed.
+
+Hint Rewrite create_counter_subst : autosubst.
+
+Typeclasses Opaque create_counter.
+Global Opaque create_counter.
+
+Lemma incr_left_subst f: incr_left.[f] = incr_left.
+Proof. by asimpl. Qed.
+
+Hint Rewrite incr_left_subst : autosubst.
+
+Typeclasses Opaque incr_left.
+Global Opaque incr_left.
+
+Lemma incr_right_subst f: incr_right.[f] = incr_right.
+Proof. by asimpl. Qed.
+
+Hint Rewrite incr_right_subst : autosubst.
+
+Typeclasses Opaque incr_right.
+Global Opaque incr_right.
+
+Lemma read_subst f: read.[f] = read.
+Proof. by asimpl. Qed.
+
+Hint Rewrite read_subst : autosubst.
+
+Typeclasses Opaque read.
+Global Opaque read.
+
+Class ClientIG Σ := clientIG {
+   client_inG :> inG Σ (authUR (optionUR (prodR fracR natUR)));
+}.
+
+Definition clientΣ := #[GFunctor (authUR (optionUR (prodR fracR natUR)))].
+
+Global Instance subG_clientΣ Σ : subG clientΣ Σ → ClientIG Σ.
+Proof. solve_inG. Qed.
+
+Section client.
+  Context `{ClientIG Σ, SplitIG Σ, ParIG Σ, heapIG Σ}.
+
+  Definition own_val_full γ n := own γ (● Some (1%Qp, n)).
+  Definition own_val_frag γ q n := own γ (◯ Some (q, n)).
+
+  Lemma create_own_val : (|==> ∃ γ, own_val_full γ 0 ∗ own_val_frag γ 1%Qp 0)%I.
+  Proof.
+    iMod (own_alloc (● Some (1%Qp, 0) ⋅ ◯ Some (1%Qp, 0))) as (γ) "[H1 H2]";
+      first done.
+    iModIntro; iExists _; iFrame.
+  Qed.
+
+  Lemma own_val_incr γ q n m :
+    own_val_full γ m -∗ own_val_frag γ q n ==∗
+    own_val_full γ (S m) ∗ own_val_frag γ q (S n).
+  Proof.
+    iIntros "H1 H2"; iCombine "H1" "H2" as "H".
+    iMod (own_update _ _ (● Some (1%Qp, S m) ⋅ ◯ Some (q, S n)) with "H")
+      as "[$ $]"; trivial.
+    apply auth_update, option_local_update, prod_local_update_2.
+    replace (S m) with (1 ⋅ m); auto. replace (S n) with (1 ⋅ n); auto.
+    apply (op_local_update); eauto.
+  Qed.
+
+  Lemma own_val_agree γ n m :
+    own_val_full γ m -∗ own_val_frag γ 1%Qp n -∗ ⌜n = m⌝.
+  Proof.
+    iIntros "H1 H2".
+    iDestruct (own_valid_2 with "H1 H2") as
+        %[Hvl ?]%auth_valid_discrete_2; auto.
+    apply Some_included_exclusive in Hvl; eauto; try typeclasses eauto.
+    destruct Hvl as [_ Hvl%leibniz_equiv]; auto.
+  Qed.
+
+  Definition client :=
+    LetIn (App create_counter Unit)
+          (Seq (par (App incr_left (Var 0)) (App incr_left (Var 0)))
+               (App read (Var 0))).
+
+  Theorem wp_client : {{{True}}} client {{{RET (NatV 2); True}}}.
+  Proof.
+    iIntros (F) "_ HF".
+    iMod create_own_val as (γ) "[Hfl Hfr]".
+    iApply (wp_bind (fill [LetInCtx _])); simpl.
+    iApply (wp_create_counter (λ v, own_val_full γ v) with "Hfl").
+    iNext. iIntros (cn sn) "#Hcn".
+    iApply wp_pure_step_later; auto. iNext. asimpl.
+    iApply (wp_bind (fill [SeqCtx _])); simpl.
+    iApply (wp_par _ _ _ (λ _, own_val_frag γ (1/2)%Qp 1)
+                     (λ _, own_val_frag γ (1/2)%Qp 1) with "[Hfr]"); eauto.
+    { iDestruct "Hfr" as "[Hfr1 Hfr2]". iSplitL "Hfr1".
+      - iApply (wp_incr_left with "[Hfr1]"); eauto; iFrame "#".
+        iIntros (v) "Hv".
+        iMod (own_val_incr with "Hv Hfr1") as "[Hv $]".
+        by replace (v + 1) with (S v) by omega.
+      - iApply (wp_incr_left with "[Hfr2]"); eauto; iFrame "#".
+        iIntros (v) "Hv".
+        iMod (own_val_incr with "Hv Hfr2") as "[Hv $]".
+        by replace (v + 1) with (S v) by omega. }
+    iNext.
+    iIntros (v1 v2) "[Hv1 Hv2]".
+    iCombine "Hv1" "Hv2" as "Hv".
+    iApply wp_pure_step_later; auto. iNext.
+    iApply (wp_read with "[Hv HF]"); eauto.
+    iFrame "#".
+    iIntros (w) "Hw".
+    iModIntro.
+    iDestruct (own_val_agree with "Hw Hv") as %?; subst.
+    iFrame. by iApply "HF".
+  Qed.
+
+End client.
