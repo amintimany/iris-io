@@ -86,24 +86,35 @@ Proof.
         { rewrite dom_delete_L Hsp2 Hfr insert_delete. by apply insert_id. }
         rewrite -{2}Hfr -Hsp2 -dom_delete_L.
         repeat econstructor; eauto.
-    + destruct (σ2'p !! l) as [str|] eqn:Hstr.
-      * eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
-                       {| Proph := <[l:={| Shead := v; Stail := str|}]> σ2'p|})).
-        -- eapply IH; eauto.
+    + assert ((∃ l, v = PrV l) ∨ (∀ l, v ≠ PrV l)) as Hl.
+      { destruct v; eauto. }
+      destruct Hl as [[l Hl]|Hl].
+      * destruct (σ2'p !! l) as [str|] eqn:Hstr.
+        -- eapply (rtc_r _ (_ ++ fill K (Assign_Pr _ _) :: _,
+                            {| Proph := <[l:={| Shead := v'; Stail := str|}]> σ2'p|})).
+           ++ eapply IH; eauto.
            repeat split; simpl; eauto.
            rewrite dom_insert_L.
            rewrite subseteq_union_1_L; first by auto.
              by apply elem_of_subseteq_singleton; eapply elem_of_dom_2.
-        -- replace σ2'p with
-               (<[l:= Stail {| Shead := v; Stail := str |}]>
-                (<[l:={| Shead := v; Stail := str |}]> σ2'p)) at 2; last first.
-           { rewrite /= insert_insert. by apply insert_id. }
-           repeat econstructor; auto.
-           rewrite lookup_insert //.
-      * eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
-                {| Heap := EHeap σ0; Proph := σ2'p; ioState := EioState σ0 |})).
-        -- eapply IH; eauto; repeat split; simpl; eauto.
-        -- repeat econstructor; eauto.
+           ++ replace σ2'p with
+                  (<[l:= Stail {| Shead := v'; Stail := str |}]>
+                   (<[l:={| Shead := v'; Stail := str |}]> σ2'p)) at 2; last first.
+              { rewrite /= insert_insert. by apply insert_id. }
+              apply of_to_val in H; subst.
+              repeat econstructor; simpl; auto.
+              rewrite lookup_insert //.
+        -- eapply (rtc_r _ (_ ++ fill K (Assign_Pr _ _) :: _,
+                            {| Heap := EHeap σ0; Proph := σ2'p; ioState := EioState σ0 |})).
+           ++ eapply IH; eauto; repeat split; simpl; eauto.
+           ++ repeat econstructor; simpl; eauto.
+              by intros ? ?; simplify_eq.
+      * eapply (rtc_r _ (_ ++ fill K (Assign_Pr _ _) :: _,
+                            {| Proph := σ2'p|})).
+           ++ eapply IH; eauto.
+           repeat split; simpl; eauto.
+           ++ repeat econstructor; eauto.
+              by intros ? ?%Hl.
 Qed.
 
 Definition safe e M :=

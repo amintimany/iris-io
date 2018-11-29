@@ -91,8 +91,9 @@ Module Plang_erased.
   | ECreate_PrS σ :
       erased_head_step Create_Pr σ (Pr (fresh (EProph σ)))
                        (update_Eproph σ ({[fresh (EProph σ)]} ∪ (EProph σ))) []
-  | EAssignS v l e σ :
-      to_val e = Some v → erased_head_step (Assign_Pr (Pr l) e) σ Unit σ []
+  | EAssignS e v e' v' σ :
+      to_val e = Some v → to_val e' = Some v' →
+      erased_head_step (Assign_Pr e e') σ Unit σ []
   | ERandS b σ : erased_head_step Rand σ (Bool b) σ []
   | EIOS t e v v' σ : to_val e = Some v → (EioState σ) [(t, v, v')] →
                     erased_head_step (IO (IOtag t) e) σ (of_val v')

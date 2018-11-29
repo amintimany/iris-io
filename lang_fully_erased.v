@@ -91,9 +91,9 @@ Module Plang_fully_erased.
   | FECreate_PrS σ :
       fully_erased_head_step Create_Pr σ (Pr (fresh (FEProph σ)))
                        (update_FEproph σ ({[fresh (FEProph σ)]} ∪ (FEProph σ))) []
-  | FEAssignS v l e σ :
-      to_val e = Some v →
-     fully_erased_head_step (Assign_Pr (Pr l) e) σ Unit σ []
+  | FEAssignS e v e' v' σ :
+      to_val e = Some v → to_val e' = Some v' →
+     fully_erased_head_step (Assign_Pr e e') σ Unit σ []
   | FERandS b σ : fully_erased_head_step Rand σ (Bool b) σ []
   | FEIOS t e v v' σ : to_val e = Some v →
                     fully_erased_head_step (IO (IOtag t) e) σ (of_val v')

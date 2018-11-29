@@ -289,7 +289,8 @@ Section lang_rules.
       iMod (@gen_heap_update with "Hσp Hp1") as "[$ Hp1]".
       iModIntro; iSplit=> //. iFrame. iApply "HΦ"; auto.
       repeat iSplit; auto.
-      iPureIntro; unfold with_head; by rewrite -H2 -Stream_unfold.
+      { iPureIntro; unfold with_head; by rewrite -H2 -Stream_unfold. }
+      specialize (H5 l eq_refl). congruence.
     - iClear "HΦ".
       iLöb as "IH".
       iApply wp_lift_head_step; auto.
@@ -299,6 +300,7 @@ Section lang_rules.
       iSplit.
       { iPureIntro. eexists _, _, _; simpl. eapply AssignFailS; eauto. }
       iNext; iIntros (v2 σ2 efs Hstep); inv_head_step.
+      { specialize (H5 l eq_refl). congruence. }
       iMod "HM" as "_". iModIntro.
       iFrame. iSplit; last done.
       iApply ("IH" with "Hp1 Hp2 Hac").
