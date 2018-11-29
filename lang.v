@@ -322,6 +322,9 @@ Module Plang.
   | AssignSucS l e p σ :
      (Proph σ) !! l = Some p → to_val e = Some (Shead p) →
      head_step (Assign_Pr (Pr l) e) σ Unit (update_proph σ (<[l:= Stail p]>(Proph σ))) []
+  | AssignS_unalloced l e v σ :
+     (Proph σ) !! l = None → to_val e = Some v →
+     head_step (Assign_Pr (Pr l) e) σ Unit σ []
   | AssignFailS l e w p σ :
       (Proph σ) !! l = Some p → to_val e = Some w → w ≠ Shead p →
       head_step (Assign_Pr (Pr l) e) σ (Assign_Pr (Pr l) e) σ []

@@ -86,21 +86,24 @@ Proof.
         { rewrite dom_delete_L Hsp2 Hfr insert_delete. by apply insert_id. }
         rewrite -{2}Hfr -Hsp2 -dom_delete_L.
         repeat econstructor; eauto.
-    + assert (∃ str, σ2'p !! l = Some str) as [str Hstr]
-          by by apply (elem_of_dom (D := gset loc)); rewrite Hsp2.
-      eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
+    + destruct (σ2'p !! l) as [str|] eqn:Hstr.
+      * eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
                        {| Proph := <[l:={| Shead := v; Stail := str|}]> σ2'p|})).
-      * eapply IH; eauto.
-        repeat split; simpl; eauto.
-        rewrite dom_insert_L.
-        rewrite Hsp2 subseteq_union_1_L; first by auto.
-        by apply elem_of_subseteq_singleton.
-      * replace σ2'p with
-            (<[l:= Stail {| Shead := v; Stail := str |}]>
-             (<[l:={| Shead := v; Stail := str |}]> σ2'p)) at 2; last first.
-        { rewrite /= insert_insert. by apply insert_id. }
-        repeat econstructor; auto.
-        rewrite lookup_insert //.
+        -- eapply IH; eauto.
+           repeat split; simpl; eauto.
+           rewrite dom_insert_L.
+           rewrite subseteq_union_1_L; first by auto.
+             by apply elem_of_subseteq_singleton; eapply elem_of_dom_2.
+        -- replace σ2'p with
+               (<[l:= Stail {| Shead := v; Stail := str |}]>
+                (<[l:={| Shead := v; Stail := str |}]> σ2'p)) at 2; last first.
+           { rewrite /= insert_insert. by apply insert_id. }
+           repeat econstructor; auto.
+           rewrite lookup_insert //.
+      * eapply (rtc_r _ (_ ++ fill K (Assign_Pr (Pr _) _) :: _,
+                {| Heap := EHeap σ0; Proph := σ2'p; ioState := EioState σ0 |})).
+        -- eapply IH; eauto; repeat split; simpl; eauto.
+        -- repeat econstructor; eauto.
 Qed.
 
 Definition safe e M :=
@@ -128,11 +131,7 @@ Proof.
     repeat match goal with A : is_Some _ |- _ => destruct A as [? ?] end;
     simpl in *.
   - repeat econstructor; eauto.
-  - repeat econstructor; simpl; eauto.
-    apply elem_of_dom; eauto.
-  - repeat econstructor; eauto.
-    apply elem_of_dom; eauto.
-  - by unshelve (repeat econstructor).
+  - eexists _, _, _; econstructor; eauto. eapply (ERandS true).
 Qed.
 
 Lemma soundness_prophecies e M :
