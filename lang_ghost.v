@@ -31,113 +31,116 @@ Fixpoint ghost_ok(e: expr): Prop :=
     var_erases_to (true :: gs) (S x) x'
   .
 
-  Inductive erases_to: list bool -> expr -> expr -> Prop :=
+  Inductive erases_to_core : list bool -> expr -> expr -> Prop :=
   | Var_erases_to gs x x':
     var_erases_to gs x x' ->
-    erases_to gs (Var x) (Var x')
+    erases_to_core gs (Var x) (Var x')
   | Rec_erases_to gs e e':
     erases_to (false :: false :: gs) e e' ->
-    erases_to gs (Rec e) (Rec e')
+    erases_to_core gs (Rec e) (Rec e')
   | Lam_erases_to gs e e':
     erases_to (false :: gs) e e' ->
-    erases_to gs (Lam e) (Lam e')
+    erases_to_core gs (Lam e) (Lam e')
   | LetIn_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to (false :: gs) e2 e2' ->
-    erases_to gs (LetIn e1 e2) (LetIn e1' e2')
-  | GRLetIn_erases_to gs e1 e2 e2':
-    ghost_ok e1 ->
-    erases_to (true :: gs) e2 e2' ->
-    erases_to gs (GRLetIn e1 e2) e2'
+    erases_to_core gs (LetIn e1 e2) (LetIn e1' e2')
   | Seq_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (Seq e1 e2) (Seq e1' e2')
-  | GRSeq_erases_to gs e1 e2 e2':
-    ghost_ok e1 ->
-    erases_to gs e2 e2' ->
-    erases_to gs (GRSeq e1 e2) e2'
+    erases_to_core gs (Seq e1 e2) (Seq e1' e2')
   | App_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (App e1 e2) (App e1' e2')
+    erases_to_core gs (App e1 e2) (App e1' e2')
   | Unit_erases_to gs:
-    erases_to gs Unit Unit
+    erases_to_core gs Unit Unit
   | Nat_erases_to gs n:
-    erases_to gs (Nat n) (Nat n)
+    erases_to_core gs (Nat n) (Nat n)
   | Bool_erases_to gs b:
-    erases_to gs (Bool b) (Bool b)
+    erases_to_core gs (Bool b) (Bool b)
   | BinOp_erases_to gs op e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (BinOp op e1 e2) (BinOp op e1' e2')
+    erases_to_core gs (BinOp op e1 e2) (BinOp op e1' e2')
   | If_erases_to gs e0 e1 e2 e0' e1' e2':
     erases_to gs e0 e0' ->
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (If e0 e1 e2) (If e0' e1' e2')
+    erases_to_core gs (If e0 e1 e2) (If e0' e1' e2')
   | Pair_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (Pair e1 e2) (Pair e1' e2')
+    erases_to_core gs (Pair e1 e2) (Pair e1' e2')
   | Fst_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Fst e) (Fst e')
+    erases_to_core gs (Fst e) (Fst e')
   | Snd_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Snd e) (Snd e')
+    erases_to_core gs (Snd e) (Snd e')
   | InjL_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (InjL e) (InjL e')
+    erases_to_core gs (InjL e) (InjL e')
   | InjR_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (InjR e) (InjR e')
+    erases_to_core gs (InjR e) (InjR e')
   | Case_erases_to gs e0 e1 e2 e0' e1' e2':
     erases_to gs e0 e0' ->
     erases_to (false :: gs) e1 e1' ->
     erases_to (false :: gs) e2 e2' ->
-    erases_to gs (Case e0 e1 e2) (Case e0' e1' e2')
+    erases_to_core gs (Case e0 e1 e2) (Case e0' e1' e2')
   | Fold_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Fold e) (Fold e')
+    erases_to_core gs (Fold e) (Fold e')
   | Unfold_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Unfold e) (Unfold e')
+    erases_to_core gs (Unfold e) (Unfold e')
   | TLam_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (TLam e) (TLam e')
+    erases_to_core gs (TLam e) (TLam e')
   | TApp_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (TApp e) (TApp e')
+    erases_to_core gs (TApp e) (TApp e')
   | Fork_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Fork e) (Fork e')
+    erases_to_core gs (Fork e) (Fork e')
   | Loc_erases_to gs l:
-    erases_to gs (Loc l) (Loc l)
+    erases_to_core gs (Loc l) (Loc l)
   | IOtag_erases_to gs t:
-    erases_to gs (IOtag t) (IOtag t)
+    erases_to_core gs (IOtag t) (IOtag t)
   | Alloc_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Alloc e) (Alloc e')
+    erases_to_core gs (Alloc e) (Alloc e')
   | Load_erases_to gs e e':
     erases_to gs e e' ->
-    erases_to gs (Load e) (Load e')
+    erases_to_core gs (Load e) (Load e')
   | Store_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (Store e1 e2) (Store e1' e2')
+    erases_to_core gs (Store e1 e2) (Store e1' e2')
   | CAS_erases_to gs e0 e1 e2 e0' e1' e2':
     erases_to gs e0 e0' ->
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (CAS e0 e1 e2) (CAS e0' e1' e2')
+    erases_to_core gs (CAS e0 e1 e2) (CAS e0' e1' e2')
   | Rand_erases_to gs:
-    erases_to gs Rand Rand
+    erases_to_core gs Rand Rand
   | IO_erases_to gs e1 e2 e1' e2':
     erases_to gs e1 e1' ->
     erases_to gs e2 e2' ->
-    erases_to gs (IO e1 e2) (IO e1' e2')
-  .
+    erases_to_core gs (IO e1 e2) (IO e1' e2')
+  with
+  erases_to : list bool -> expr -> expr -> Prop :=
+  | GRLetIn_erases_to gs e1 e2 e2':
+    ghost_ok e1 ->
+    erases_to (true :: gs) e2 e2' ->
+    erases_to gs (GRLetIn e1 e2) e2'
+  | GRSeq_erases_to gs e1 e2 e2':
+    ghost_ok e1 ->
+    erases_to gs e2 e2' ->
+    erases_to gs (GRSeq e1 e2) e2'
+  | erases_to_cong gs e e':
+      erases_to_core gs e e' -> erases_to gs e e'.
 
   Inductive val_erases_to: val -> val -> Prop :=
   | RecV_erases_to e e':
@@ -248,3 +251,6 @@ Fixpoint ghost_ok(e: expr): Prop :=
   | IORCtx_erases_to v v' :
       val_erases_to v v' →
       ectx_item_erases_to (IORCtx v) (IORCtx v').
+
+  Definition ectx_erases_to K K' :=
+    Forall2 ectx_item_erases_to K K'.

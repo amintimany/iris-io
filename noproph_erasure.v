@@ -35,11 +35,14 @@ Definition cfg_erases_to cfgI cfg :=
 Definition prim_step_no_fork μcfg μcfg' :=
   @language.prim_step PFE_lang μcfg.1 μcfg.2 μcfg'.1 μcfg'.2 [].
 
+Definition ghost_steps h ρ τ e ρ' e' :=
+  rtc prim_step_no_fork
+      (e, {|FEHeap := h; FEProph := ρ; FEIO := τ |})
+      (e', {|FEHeap := h; FEProph := ρ'; FEIO := τ |}).
+
 Lemma ghost_no_fork K e h ρ τ :
   (∀ f, e.[f] = e) →
-  ghost_ok e → ∃ v ρ', rtc prim_step_no_fork
-                   (fill K e, {|FEHeap := h; FEProph := ρ; FEIO := τ |})
-                   (fill K (of_val v), {|FEHeap := h; FEProph := ρ'; FEIO := τ |}).
+  ghost_ok e → ∃ v ρ', ghost_steps h ρ τ (fill K e) ρ' (fill K (of_val v)).
 Proof.
   revert K ρ.
   induction e => K ρ Hcl; try inversion 1.
@@ -81,9 +84,32 @@ Proof.
     apply rtc_once; repeat econstructor; eauto using to_of_val.
 Qed.
 
-Lemma erases_to_fill_inv gs er K e:
-  erases_to gs er (fill K e) → ∃ K' er', er = fill K' er' ∧ erases_to gs' er' e.
+Lemma erases_to_fill_inv e h ρ τ K' eh':
+  erases_to [] e (fill K' eh') →
+  ∃ e1 ρ1, ghost_steps h ρ τ e ρ1 e1 ∧
+           ∃ K eh, ectx_erases_to K K' ∧ erases_to [] eh eh' ∧ e1 = fill K eh.
 Proof.
+  set (Kl := length K'); set (HKl := eq_refl : Kl = length K' );
+    clearbody Kl HKl.
+  revert K' HKl e h ρ τ eh'.
+  induction Kl as [|a K']=> e h ρ τ eh'.
+  - simpl; intros ?; eexists [], _; repeat split; eauto; try apply Forall2_nil.
+  - simpl; intros (K1 & eh1 & HK & He & Heq)%IHK'; simpl in *; subst.
+    induction He.
+    + 
+
+
+
+-
+  revert e eh'. induction K' as [|a K']=> e eh'.
+  + simpl; intros ?; eexists [], _; repeat split; eauto; try apply Forall2_nil.
+  + simpl; intros (K1 & eh1 & HK & He & Heq)%IHK'; simpl in *; subst.
+
+erases_to e e' → ∃ K e1, e = fill C e1 ∧ all_ghost C ∧ erases_to_core e1 e'
+
+    destruct a; simpl in *.
+    *
+
 
 Lemma noproph_step cfg cfgI cfg' :
   cfg_erases_to cfgI cfg →
