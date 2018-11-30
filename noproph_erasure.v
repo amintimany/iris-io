@@ -71,15 +71,47 @@ Proof.
   - eexists (PrV _), _; eapply rtc_refl.
   - eexists (PrV _), _; repeat econstructor; simpl; eauto.
     econstructor.
-  - 
+  - edestruct (IHe1 (Assign_PrLCtx e2 :: K)) as (v1 & ? & He1); eauto.
+    { by intros f; specialize (Hcl f); asimpl in Hcl; simplify_eq. }
+    edestruct (IHe2 (Assign_PrRCtx v1 :: K)) as (v2 & ? & He2); eauto.
+    { by intros f; specialize (Hcl f); asimpl in Hcl; simplify_eq. }
+    eexists UnitV, _.
+    eapply rtc_transitive; first apply He1.
+    eapply rtc_transitive; first apply He2.
+    apply rtc_once; repeat econstructor; eauto using to_of_val.
+Qed.
 
-Lemma noproph_step M cfg cfgI cfg' :
+Lemma erases_to_fill_inv gs er K e:
+  erases_to gs er (fill K e) → ∃ K' er', er = fill K' er' ∧ erases_to gs' er' e.
+Proof.
+
+Lemma noproph_step cfg cfgI cfg' :
   cfg_erases_to cfgI cfg →
   @language.step PNP_lang cfg cfg' →
-  cfg_not_failed M cfgI.1 cfgI.2 →
   ∃ cfgI', cfg_erases_to cfgI' cfg' ∧ rtc (@language.step PFE_lang) cfgI cfgI'.
 Proof.
-  
+  destruct cfgI as [thpI σI].
+  intros [Her1 [Her2 Her3]] Hstp.
+  inversion Hstp as [? ? ? ? ? ? ? ? ? Hpstp]; subst.
+  inversion Hpstp as [? ? ? ? ? Hhstp]; simpl in *; simplify_eq.
+  inversion Hhstp; simplify_eq.
+  - apply List.Forall2_app_inv_r in Her1.
+    destruct Her1 as
+        (t1I & restI & Ht1I & (er & t2I & Her & Ht2I & Hrest)%Forall2_cons_inv_r & Heq).
+    subst.
+    
+
+
+
+
+
+
+
+
+eexists (_, {| FEHeap := _;  FEProph := _;  FEIO := _|}); repeat split; simpl; eauto.
+    
+
+
 
 Theorem fully_erased_noproph e M : fully_erased_safe e M → noproph_safe e M.
 Proof.

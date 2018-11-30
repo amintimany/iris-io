@@ -31,7 +31,6 @@ Qed.
 Lemma fully_erased_reachable_reachable th1 h1 th2 σ2 (M : ioSpec) :
   prefix_closed M →
   M (FEIO σ2) →
-  erased_safe e M →
   rtc (@step PFE_lang) (th1, {| FEHeap := h1; FEProph := ∅; FEIO := [] |})
       (th2, σ2) →
   rtc (@step PE_lang)
