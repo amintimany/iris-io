@@ -10,8 +10,6 @@ Require Import Coq.Logic.Classical.
 
 (* Definition heap_instr hG := (λ v, Ghostlang.instr (of_val v)) <$> hG. *)
 
-Definition val_erases_to vI v := erases_to [] (of_val vI) (of_val v).
-
 Definition heap_erases_to (hI h : gmap loc val) :=
   dom (gset loc) hI = dom (gset loc) h ∧
   ∀ i vI,
@@ -23,7 +21,7 @@ Definition trace_erases_to τI τ :=
                      tI = t ∧ val_erases_to v1I v1 ∧ val_erases_to v2I v2
                    end) τI τ.
 
-Definition erase_to esI es := Forall2 (erases_to []) esI es.
+Definition erase_to esI es := Forall2 (λ eI e, ∃ n, erases_to n [] eI e) esI es.
 
 Definition state_erases_to σI σ :=
   heap_erases_to (FEHeap σI) (NPHeap σ) ∧
@@ -39,6 +37,28 @@ Definition ghost_steps h ρ τ e ρ' e' :=
   rtc prim_step_no_fork
       (e, {|FEHeap := h; FEProph := ρ; FEIO := τ |})
       (e', {|FEHeap := h; FEProph := ρ'; FEIO := τ |}).
+
+Lemma prim_step_no_fork_ectx K e σ e' σ' :
+  rtc prim_step_no_fork (e, σ) (e', σ') →
+  rtc prim_step_no_fork (fill K e, σ) (fill K e', σ').
+Proof.
+  rewrite /prim_step_no_fork /=. intros [n Hstp]%rtc_nsteps.
+  apply (nsteps_rtc n).
+  revert K e σ e' σ' Hstp; induction n; intros K e σ e' σ' Hstp.
+  - inversion Hstp; subst; econstructor.
+  - inversion Hstp as [|? ? [] ? []]; simpl in *; simplify_eq.
+    eapply (nsteps_l _ _ _ (_, _)).
+    rewrite -fill_app; eapply Ectx_step; simpl; eauto.
+    rewrite fill_app.
+    by apply IHn.
+Qed.
+
+Lemma ghost_steps_ectx K h ρ τ e ρ' e' :
+  ghost_steps h ρ τ e ρ' e' →
+  ghost_steps h ρ τ (fill K e) ρ' (fill K e').
+Proof.
+  apply prim_step_no_fork_ectx.
+Qed.
 
 Lemma ghost_no_fork K e h ρ τ :
   (∀ f, e.[f] = e) →
@@ -84,11 +104,63 @@ Proof.
     apply rtc_once; repeat econstructor; eauto using to_of_val.
 Qed.
 
-Lemma erases_to_fill_inv e h ρ τ K' eh':
-  erases_to [] e (fill K' eh') →
+Lemma erases_to_fill_inv n : ∀ e h ρ τ K' eh',
+  erases_to n [] e (fill K' eh') →
   ∃ e1 ρ1, ghost_steps h ρ τ e ρ1 e1 ∧
-           ∃ K eh, ectx_erases_to K K' ∧ erases_to [] eh eh' ∧ e1 = fill K eh.
+           ∃ K eh m, ectx_erases_to K K' ∧ erases_to m [] eh eh' ∧ e1 = fill K eh.
 Proof.
+  pose (m := S n). assert (n < m) as Hle by by subst; auto.
+  clearbody m. revert n Hle.
+  induction m; intros n Hle e h ρ τ K' eh' He; first by omega.
+  inversion He; simplify_eq.
+  - inversion H3.
+  - assert (K' = []); subst; simpl in *.
+    { clear -H; induction K' using rev_ind; auto.
+      rewrite fill_app in H; simpl in *.
+      destruct x; simplify_eq. }
+    simplify_eq.
+    eexists _, _; split; first apply rtc_refl.
+    eexists [], _, _; split; eauto.
+    constructor.
+  - assert (K' = []); subst; simpl in *.
+    { clear -H; induction K' using rev_ind; auto.
+      rewrite fill_app in H; simpl in *.
+      destruct x; simplify_eq. }
+    simplify_eq.
+    eexists _, _; split; first apply rtc_refl.
+    eexists [], _, _; split; eauto.
+    constructor.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (LetIn e1 e2), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simpl in *; simplify_eq.
+      assert (n0 < m) as Hn0 by omega.
+      edestruct (IHm) as (e11 & ρ1 & He11 & (K & eh & m1 & HK & Heh & He11eq));
+        eauto; subst.
+      eexists (fill (K ++ [LetInCtx _]) eh), ρ1; split; eauto.
+      rewrite fill_app; simpl.
+      apply (ghost_steps_ectx [LetInCtx _]); eauto.
+      eexists (K ++ [LetInCtx e2]), eh, _; repeat split; eauto.
+      apply Forall2_app; auto.
+      repeat econstructor; eauto.
+  - 
+    
+
+
+    assert (K' = []); subst; simpl in *.
+    { clear -H; induction K' using rev_ind; auto.
+      rewrite fill_app in H; simpl in *.
+      destruct x; simplify_eq. }
+    simplify_eq.
+    eexists _, _; split; first apply rtc_refl.
+    eexists [], _, _; split; eauto.
+    constructor.
+
+
+
+
   set (Kl := length K'); set (HKl := eq_refl : Kl = length K' );
     clearbody Kl HKl.
   revert K' HKl e h ρ τ eh'.
