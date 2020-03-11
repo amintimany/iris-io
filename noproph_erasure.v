@@ -199,19 +199,204 @@ Proof.
     econstructor; eauto.
 Qed.
 
-(* Lemma erases_to_head_step n e σ1 eh1 σ2 eh2 efs : *)
-(*   erases_to n [] e eh1 → *)
-(*   @ectx_language.head_step PFE_ectx_lang eh1 σ1 eh2 σ2 efs *)
-(*   → (∃ eh, erases_to n [] e eh) ∧ *)
-(*     forall ef, ef ∈ efs → (∃ efh, erases_to n [] ef efh). *)
+(* Lemma erases_to_head_step n e1 σ1 σ2 σI1 eI1 σI2 eI2 efsI : *)
+(*   erases_to n [] eI1 e1 → *)
+(*   state_erases_to σI1 σ1 → *)
+(*   state_erases_to σI2 σ2 → *)
+(*   @ectx_language.head_step PNP_ectx_lang eh1 σh1 eh2 σh2 efsh *)
+(*   → ∃ e2 efs, @prim_step PFE_ectx_lang e1 σ1 e2 σ2 efs *)
+(*               ∧ (erases_to n [] e2 eh2) ∧ *)
+(*               forall i ef, efs !! i = Some ef → (∃ efh, efsh !! i = Some efh ∧ *)
+(*                                                    erases_to n [] ef efh). *)
 (* Proof. *)
 (*   pose (m := S n). assert (n < m) as Hle by by subst; auto. *)
 (*   clearbody m. *)
 (*   revert n Hle e σ1 eh1 σ2 eh2 efs. *)
 (*   induction m; intros n Hle e σ1 eh1 σ2 eh2 efs He Hhstp; first lia. *)
 (*   inversion Hhstp; simplify_eq. *)
-(*   -  *)
+(*   - *)
 
+
+Lemma erases_to_fill_inv n : ∀ eI hI h ρ τI τ K e e' σ' efs,
+  erases_to n [] eI (fill K e) →
+  heap_erases_to hI h →
+  trace_erases_to τI τ →
+  @ectx_language.head_step PNP_ectxi_lang e {| NPHeap := h; NPIO := τ|}
+                           e' σ' efs →
+  ∃ m eI' eI'' ρ' σI'' efsI,
+    ghost_steps h ρ τ eI ρ' eI' ∧
+    @prim_step PFE_ectxi_lang eI' {|FEHeap := hI; FEProph := ρ'; FEIO := τI|}
+               eI'' σI'' efsI ∧
+    state_erases_to σI'' σ' ∧
+    erases_to m [] eI'' (fill K e') ∧
+    erase_to efsI efs.
+Proof.
+  pose (m := S n). assert (n < m) as Hle by by subst; auto.
+  clearbody m. revert n Hle.
+  induction m; intros n Hle eI hI h ρ τI τ K e e' σ' efs Hee Heh Heτ Hhstp;
+    first by omega.
+  inversion Hee; simpl in *; simplify_eq.
+  - inversion H3.
+  - induction K using rev_ind; auto.
+    + simpl in *; simplify_eq.
+      inversion Hhstp.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simplify_eq.
+  - induction K using rev_ind; auto.
+    + simpl in *; simplify_eq.
+      inversion Hhstp.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simplify_eq.
+  - destruct K using rev_ind; simpl in *; simplify_eq.
+    + destruct erases_to_val_inv
+
+      eexists _, (LetIn e1 e2), _, _, _, _; repeat split;
+        first apply rtc_refl.
+      apply 
+
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simpl in *; simplify_eq.
+      assert (n0 < m) as Hn0 by omega.
+      edestruct (IHm) as (e11 & ρ1 & He11 & (K & eh & m1 & HK & Heh & He11eq));
+        eauto; subst.
+      eexists (fill (K ++ [LetInCtx _]) eh), ρ1; split; eauto.
+      rewrite fill_app; simpl.
+      apply (ghost_steps_ectx [LetInCtx _]); eauto.
+      eexists (K ++ [LetInCtx e2]), eh, _; repeat split; eauto.
+      apply Forall2_app; auto.
+      repeat econstructor; eauto.
+  - destruct (ghost_no_fork [GRLetInCtx e2] e1 h ρ τ) as (v & ρ' & Hv & Hvcl & Hvgo);
+      auto.
+    assert (ghost_steps h ρ τ (fill [GRLetInCtx e2] e1) ρ' (e2.[of_val v/]))
+      as Hv'.
+    { eapply rtc_r; eauto; simpl.
+      apply head_prim_step; econstructor; eauto using to_of_val. }
+    pose proof (erases_to_subst [] [] _ _ _ _ H1 Hvgo Hvcl) as H1'; asimpl in *.
+    assert (n0 < m) as Hn0 by lia.
+    destruct (IHm _ Hn0 _ h ρ' τ _ _ H1') as
+        (e11 & ρ11 & He11 & K11 & eh11 & m11 & HK11 & Heh11 & He11');
+      simplify_eq.
+    exists (fill K11 eh11), ρ11; split.
+    { eapply rtc_transitive; eauto. }
+    eexists _, _, _; repeat split; eauto.
+  -  destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (Seq e1 e2), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simpl in *; simplify_eq.
+      assert (n0 < m) as Hn0 by omega.
+      edestruct (IHm) as (e11 & ρ1 & He11 & (K & eh & m1 & HK & Heh & He11eq));
+        eauto; subst.
+      eexists (fill (K ++ [SeqCtx _]) eh), ρ1; split; eauto.
+      rewrite fill_app; simpl.
+      apply (ghost_steps_ectx [SeqCtx _]); eauto.
+      eexists (K ++ [SeqCtx e2]), eh, _; repeat split; eauto.
+      apply Forall2_app; auto.
+      repeat econstructor; eauto.
+  - destruct (ghost_no_fork [GRSeqCtx e2] e1 h ρ τ) as (v & ρ' & Hv & Hvcl & Hvgo);
+      auto.
+    assert (ghost_steps h ρ τ (fill [GRSeqCtx e2] e1) ρ' e2)
+      as Hv'.
+    { eapply rtc_r; eauto; simpl.
+      apply head_prim_step; econstructor; eauto using to_of_val. }
+    assert (n0 < m) as Hn0 by lia.
+    destruct (IHm _ Hn0 _ h ρ' τ _ _ H1) as
+        (e11 & ρ11 & He11 & K11 & eh11 & m11 & HK11 & Heh11 & He11');
+      simplify_eq.
+    exists (fill K11 eh11), ρ11; split.
+    { eapply rtc_transitive; eauto. }
+    eexists _, _, _; repeat split; eauto.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (App e1 e2), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H; simpl in *.
+      destruct x; simpl in *; simplify_eq.
+      * assert (n0 < m) as Hn0 by omega.
+        edestruct (IHm) as (e11 & ρ1 & He11 & (K & eh & m1 & HK & Heh & He11eq));
+          eauto; subst.
+        eexists (fill (K ++ [AppLCtx _]) eh), ρ1; split; eauto.
+        rewrite fill_app; simpl.
+        apply (ghost_steps_ectx [AppLCtx _]); eauto.
+        eexists (K ++ [AppLCtx e2]), eh, _; repeat split; eauto.
+        apply Forall2_app; auto.
+        repeat econstructor; eauto.
+      * destruct (erases_to_val_inv _ _ _ h ρ τ H0) as (w1 & ρ1 & Hw1 & Hvet).
+        assert (m0 < m) as Hm0 by omega.
+        edestruct (IHm _ Hm0 _ h ρ1 τ _ _ H4) as
+            (e11 & ρ2 & He11 & (K & eh & m1 & HK & Heh & He11eq));
+          eauto; subst.
+        eexists (fill (K ++ [AppRCtx w1]) eh), ρ2; split; eauto.
+        { rewrite fill_app; simpl.
+          eapply rtc_transitive.
+          - apply (ghost_steps_ectx [AppLCtx _]); eauto.
+          - apply (ghost_steps_ectx [AppRCtx _]); eauto. }
+        eexists (K ++ [AppRCtx w1]), eh, _; repeat split; eauto.
+        apply Forall2_app; auto.
+        repeat econstructor; eauto.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists Unit, ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (Nat _), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (Bool _), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (Fork _), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H; simpl in *.
+      by destruct x.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (Loc _), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists (IOtag _), ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - destruct K' using rev_ind; simpl in *; simplify_eq.
+    + eexists Rand, ρ; split; first apply rtc_refl.
+      eexists [], _, _; repeat split; eauto.
+      constructor.
+    + rewrite fill_app in H3; simpl in *.
+      by destruct x.
+  - admit.
+Admitted.
 
 
 Lemma erases_to_fill_inv n : ∀ e h ρ τ K' eh',
